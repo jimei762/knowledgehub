@@ -613,22 +613,18 @@ export function PublicKnowledgeBaseView() {
         <div className="p-6 md:p-8 w-full max-w-[1440px] mx-auto space-y-6">
           
           {/* Header Banner */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-left">
+          <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-[20px] font-medium text-slate-900 mb-1.5 flex items-center gap-1">
-                <Globe className="w-5 h-5 text-blue-600" />
-                公共知识库管理
-              </h2>
+              <h2 className="text-2xl font-medium text-slate-900 mb-2">公共知识库管理</h2>
             </div>
             
-            <div className="flex items-center gap-1 shrink-0 select-none">
-              <span className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-xl flex items-center gap-1 shadow-xs">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <div className="flex items-center gap-3 shrink-0 select-none">
+              <span className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-xl shadow-xs">
                 当前：公共空间超级管理员
               </span>
               <button 
                 onClick={() => setViewMode('create')}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-md shadow-blue-100 flex items-center gap-1 transition"
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg shadow-sm flex items-center gap-1 hover:bg-blue-700 transition"
               >
                 <Plus className="w-4 h-4" /> 新建公共知识库
               </button>

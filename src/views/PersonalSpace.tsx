@@ -523,7 +523,6 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
         <div className="p-5 md:p-6 w-full max-w-[1480px] mx-auto">
           <div className="mb-5">
             <h2 className="text-[24px] font-medium text-slate-900 leading-snug m-0">个人知识空间</h2>
-            <p className="text-sm text-slate-500 mt-1">总览、个人库与订阅协作一览</p>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(420px,480px)_minmax(0,1fr)] gap-5 items-start">

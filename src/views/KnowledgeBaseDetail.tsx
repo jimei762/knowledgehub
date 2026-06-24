@@ -13,7 +13,7 @@ import {
 import { FilePreprocessView } from "./FilePreprocessView";
 
 // --- Types ---
-interface FileNode {
+export interface FileNode {
   id: string;
   parentId: string | null;
   name: string;
@@ -29,6 +29,9 @@ interface FileNode {
   isFavorited?: boolean;
   publishStatus?: 'pending_audit' | 'approved' | 'published' | 'offline' | 'archived';
   isRequiredRead?: boolean;
+  materialType?: string;
+  fileTags?: string[];
+  fileMetadata?: Record<string, string>;
 }
 
 // --- Mock Data ---
@@ -111,7 +114,8 @@ export function KnowledgeBaseDetail({
   hideHeader = false,
   initialFileId,
   isArchiveView = false,
-  onUploadClick
+  onUploadClick,
+  fileListDisplayConfig,
 }: { 
   kbId: string, 
   kbName: string, 
@@ -123,13 +127,77 @@ export function KnowledgeBaseDetail({
   hideHeader?: boolean,
   initialFileId?: string,
   isArchiveView?: boolean,
-  onUploadClick?: () => boolean | void
+  onUploadClick?: () => boolean | void,
+  fileListDisplayConfig?: import("../types").FileListDisplayConfig,
 }) {
   const [nodes, setNodes] = useState<FileNode[]>(() => {
     if (initialNodes) return initialNodes;
     if (kbType === 'public') return MOCK_PUBLIC_NODES;
     return INITIAL_NODES;
   });
+
+  useEffect(() => {
+    if (initialNodes) {
+      setNodes(initialNodes);
+    }
+  }, [kbId, initialNodes]);
+
+  const fileListExtraColumns = useMemo(() => {
+    if (!fileListDisplayConfig) return [];
+    const cols: { key: string; label: string; headerClassName: string; cellClassName: string }[] = [];
+    if (fileListDisplayConfig.showMaterialType) {
+      cols.push({
+        key: '__materialType',
+        label: '资料类型',
+        headerClassName: 'min-w-[96px] whitespace-nowrap',
+        cellClassName: 'min-w-[96px]',
+      });
+    }
+    if (fileListDisplayConfig.showFileTags) {
+      cols.push({
+        key: '__fileTags',
+        label: '文件标签',
+        headerClassName: 'min-w-[120px] whitespace-nowrap',
+        cellClassName: 'min-w-[120px]',
+      });
+    }
+    fileListDisplayConfig.metadataFields
+      .filter((f) => f.showInFileList)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .forEach((f) =>
+        cols.push({
+          key: f.code,
+          label: f.name,
+          headerClassName: 'min-w-[88px] max-w-[140px] whitespace-nowrap',
+          cellClassName: 'min-w-[88px] max-w-[140px]',
+        })
+      );
+    return cols;
+  }, [fileListDisplayConfig]);
+
+  const renderFileListExtraCell = (node: FileNode, colKey: string) => {
+    if (node.type === 'folder') {
+      return <span className="text-slate-300 text-sm">-</span>;
+    }
+    if (colKey === '__materialType') {
+      return <span className="text-sm text-slate-600">{node.materialType || '-'}</span>;
+    }
+    if (colKey === '__fileTags') {
+      if (!node.fileTags?.length) {
+        return <span className="text-slate-300 text-sm">-</span>;
+      }
+      return (
+        <div className="flex flex-wrap gap-1">
+          {node.fileTags.map((tag) => (
+            <span key={tag} className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded border border-blue-100">
+              #{tag}
+            </span>
+          ))}
+        </div>
+      );
+    }
+    return <span className="text-sm text-slate-600">{node.fileMetadata?.[colKey] || '-'}</span>;
+  };
   const [teamRole, setTeamRole] = useState<'member' | 'admin'>(initialRole);
   const canWrite = kbType === 'personal_own' || ((kbType === 'team' || kbType === 'public') && teamRole === 'admin');
 
@@ -1144,23 +1212,26 @@ export function KnowledgeBaseDetail({
                  </p>
                </div>
             ) : (
-              <table className="w-full text-left">
+              <table className="w-full text-left min-w-[960px]">
                 <thead className="sticky top-0 bg-white/95 backdrop-blur z-10 after:absolute after:bottom-0 after:left-0 after:right-0 after:border-b after:border-slate-100">
-                  <tr className="text-sm font-medium text-slate-500 uppercase tracking-widest">
-                    <th className="py-3 px-6 font-medium w-1/3">文件名称</th>
+                  <tr className="text-sm font-medium text-slate-500">
+                    <th className="py-3 px-6 font-medium min-w-[200px]">文件名称</th>
+                    {fileListExtraColumns.map((col) => (
+                      <th key={col.key} className={cn("py-3 px-4 font-medium", col.headerClassName)}>{col.label}</th>
+                    ))}
                     {isArchiveView ? (
-                      <th className="py-3 px-4 font-medium">归档状态</th>
+                      <th className="py-3 px-4 font-medium whitespace-nowrap">归档状态</th>
                     ) : kbType === 'public' ? (
-                      <th className="py-3 px-4 font-medium">发布状态</th>
+                      <th className="py-3 px-4 font-medium whitespace-nowrap">发布状态</th>
                     ) : (
-                      <th className="py-3 px-4 font-medium">治理状态</th>
+                      <th className="py-3 px-4 font-medium whitespace-nowrap">治理状态</th>
                     )}
                     {kbType !== 'public' && !isArchiveView && (
-                      <th className="py-3 px-4 font-medium">处理状态</th>
+                      <th className="py-3 px-4 font-medium whitespace-nowrap">处理状态</th>
                     )}
-                    <th className="py-3 px-4 font-medium text-right">创建者</th>
-                    <th className="py-3 px-4 font-medium text-right">大小</th>
-                    <th className="py-3 px-4 font-medium text-right">更新时间</th>
+                    <th className="py-3 px-4 font-medium whitespace-nowrap">创建者</th>
+                    <th className="py-3 px-4 font-medium whitespace-nowrap">大小</th>
+                    <th className="py-3 px-4 font-medium whitespace-nowrap">更新时间</th>
                     {kbType === 'public' && teamRole === 'admin' && (
                       <th className="py-3 px-4 font-medium text-center">状态管理</th>
                     )}
@@ -1182,6 +1253,11 @@ export function KnowledgeBaseDetail({
                           </span>
                         </div>
                       </td>
+                      {fileListExtraColumns.map((col) => (
+                        <td key={col.key} className={cn("py-3.5 px-4", col.cellClassName)}>
+                          {renderFileListExtraCell(node, col.key)}
+                        </td>
+                      ))}
                       {isArchiveView ? (
                         <td className="py-3.5 px-4"><PublishStatusBadge status="archived" /></td>
                       ) : kbType === 'public' ? (

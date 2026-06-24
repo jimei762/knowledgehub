@@ -694,7 +694,7 @@ export const CollectionSpecConfig: React.FC<CollectionSpecConfigProps> = ({
     if (isEditing && editingFieldDraft) {
       return (
         <tr className="bg-blue-50/30">
-          <td colSpan={7} className="p-3">
+          <td colSpan={8} className="p-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-500 mb-1">字段名称 *</label>
@@ -775,6 +775,23 @@ export const CollectionSpecConfig: React.FC<CollectionSpecConfigProps> = ({
                   />
                   <span className="text-sm text-slate-600">
                     {editingFieldDraft.required ? '必填' : '选填'}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">文件列表展示</label>
+                <div className="flex items-center gap-2 h-[38px]">
+                  <ToggleSwitch
+                    on={!!editingFieldDraft.showInFileList}
+                    onToggle={() =>
+                      setEditingFieldDraft({
+                        ...editingFieldDraft,
+                        showInFileList: !editingFieldDraft.showInFileList,
+                      })
+                    }
+                  />
+                  <span className="text-sm text-slate-600">
+                    {editingFieldDraft.showInFileList ? '展示' : '不展示'}
                   </span>
                 </div>
               </div>
@@ -877,6 +894,15 @@ export const CollectionSpecConfig: React.FC<CollectionSpecConfigProps> = ({
         </td>
         <td className="px-4 py-3">
           <span className="text-sm text-slate-600">{SCOPE_LABELS[field.scope]}</span>
+        </td>
+        <td className="px-4 py-3 text-center">
+          {field.showInFileList ? (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+              展示
+            </span>
+          ) : (
+            <span className="text-slate-300 text-sm">—</span>
+          )}
         </td>
         <td className="px-4 py-3">
           <span className="text-sm text-slate-500 font-mono">{field.sortOrder}</span>
@@ -1242,6 +1268,9 @@ export const CollectionSpecConfig: React.FC<CollectionSpecConfigProps> = ({
                       <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                         适用范围
                       </th>
+                      <th className="px-4 py-2.5 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        文件列表展示
+                      </th>
                       <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                         排序号
                       </th>
@@ -1253,7 +1282,7 @@ export const CollectionSpecConfig: React.FC<CollectionSpecConfigProps> = ({
                   <tbody className="divide-y divide-slate-50">
                     {draftSpec.metadataFields.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-12 text-center">
+                        <td colSpan={8} className="px-4 py-12 text-center">
                           <div className="flex flex-col items-center">
                             <Settings className="w-10 h-10 text-slate-200 mb-2" />
                             <p className="text-sm text-slate-400 font-medium">暂无元数据字段</p>

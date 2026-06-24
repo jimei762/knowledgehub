@@ -1,5 +1,7 @@
 import express from "express";
 import path from "path";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { createServer as createViteServer } from "vite";
 
 const app = express();
@@ -166,8 +168,10 @@ app.post("/api/files/:id/preprocess", (req, res) => {
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
+      configFile: false,
       server: { middlewareMode: true },
       appType: "spa",
+      plugins: [react(), tailwindcss()],
     });
     app.use(vite.middlewares);
   } else {

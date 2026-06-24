@@ -1,12 +1,71 @@
-import { useState, useEffect } from "react";
-import { Check, Database, Users, ShieldAlert, Shield, FileText, Settings, Plus, Search, ChevronRight, BarChart3, Clock, Lock, Bell, Download, MonitorPlay, X, ArrowLeft, MoreHorizontal, FileArchive, CheckCircle2, HelpCircle, ExternalLink, Crown, Sparkles, Eye, Trash2, Upload, Globe, ShieldCheck, AlertCircle, UserPlus, ChevronDown, Folder, ListChecks, Pencil } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Check, Database, Users, ShieldAlert, FileText, Settings, Plus, Search, ChevronRight, BarChart3, Clock, Lock, Bell, Download, MonitorPlay, X, ArrowLeft, MoreHorizontal, FileArchive, CheckCircle2, HelpCircle, ExternalLink, Crown, Sparkles, Eye, Trash2, Upload, Globe, ShieldCheck, AlertCircle, UserPlus, ChevronDown, Folder, ListChecks, Pencil } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { KnowledgeBaseDetail } from "./KnowledgeBaseDetail";
 import { MemberSelectorModal } from "../components/MemberSelectorModal";
 import { UploadWithSpecModal } from "../components/UploadWithSpecModal";
 import { buildPresetSpec } from "../components/CollectionSpecConfig";
-import { CollectionSpec, MetadataField, MaterialTypeRule } from "../types";
+import { CollectionSpec, MetadataField, MaterialTypeRule, UploadFileItem, FileListDisplayConfig } from "../types";
+import type { FileNode } from "./KnowledgeBaseDetail";
+
+const DEFAULT_TEAM_KB_NODES: Record<string, FileNode[]> = {
+  kb_credit: [
+    { id: 'root', parentId: null, name: '全部文件', type: 'folder', updatedAt: '2026-06-11T10:12:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '系统' },
+    { id: 'f1', parentId: 'root', name: '授信资料', type: 'folder', updatedAt: '2026-06-11T10:12:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '张敏' },
+    { id: 'f2', parentId: 'root', name: '客户经理培训', type: 'folder', updatedAt: '2026-06-10T18:02:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '刘洋' },
+    { id: 'f3', parentId: 'root', name: '历史项目复盘', type: 'folder', updatedAt: '2026-06-09T14:18:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '陈宁' },
+    { id: 'file1', parentId: 'f1', name: '授信资料补录指引.pdf', type: 'document', format: 'pdf', size: 3.42 * 1024 * 1024, updatedAt: '2026-06-11T09:40:00Z', governanceStatus: 'pending', preprocessStatus: 'pending', creator: '刘洋' },
+    { id: 'file2', parentId: 'f2', name: '客户经理培训课件.pptx', type: 'document', format: 'pptx', size: 18.6 * 1024 * 1024, updatedAt: '2026-06-02T10:00:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '张敏' },
+  ],
+  kb_retail: [
+    { id: 'root', parentId: null, name: '全部文件', type: 'folder', updatedAt: '2026-06-11T10:12:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '系统' },
+  ],
+  kb_policy: [
+    { id: 'root', parentId: null, name: '全部文件', type: 'folder', updatedAt: '2026-06-11T10:12:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '系统' },
+  ],
+};
+
+function buildFileListDisplayConfig(
+  spec: CollectionSpec | null,
+  enabled: boolean
+): FileListDisplayConfig | undefined {
+  if (!enabled || !spec) return undefined;
+  return {
+    showMaterialType: true,
+    showFileTags: true,
+    metadataFields: spec.metadataFields,
+  };
+}
+
+function createFileNodeFromUpload(
+  item: UploadFileItem,
+  batchMetadata: Record<string, string>,
+  parentId = 'root'
+): FileNode {
+  const ext = item.fileName.split('.').pop()?.toLowerCase() || '';
+  let type: FileNode['type'] = 'document';
+  if (['xlsx', 'xls'].includes(ext)) type = 'spreadsheet';
+  else if (['ppt', 'pptx'].includes(ext)) type = 'presentation';
+  else if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) type = 'image';
+  else if (['zip', 'rar'].includes(ext)) type = 'archive';
+
+  return {
+    id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    parentId,
+    name: item.fileName,
+    type,
+    format: ext,
+    size: item.file.size,
+    updatedAt: new Date().toISOString(),
+    governanceStatus: 'pending',
+    preprocessStatus: 'pending',
+    creator: '当前用户',
+    materialType: item.materialType || undefined,
+    fileTags: item.fileTags?.length ? item.fileTags : undefined,
+    fileMetadata: { ...batchMetadata, ...item.fieldValues },
+  };
+}
 
 const mockTeamKbs = [
   {
@@ -140,8 +199,7 @@ export function TeamKnowledgeBaseView() {
   
   // Document Security Settings Toggles
   const [docWatermark, setDocWatermark] = useState<boolean>(true);
-  const [docEncryption, setDocEncryption] = useState<boolean>(false);
-  const [docAutoBackup, setDocAutoBackup] = useState<boolean>(true);
+  const [watermarkContent, setWatermarkContent] = useState<string>("{用户名} {工号} · {访问时间}");
   const [docExportControl, setDocExportControl] = useState<boolean>(false);
   const [docLargeTransferLimit, setDocLargeTransferLimit] = useState<boolean>(true);
 
@@ -170,6 +228,12 @@ export function TeamKnowledgeBaseView() {
   // 当前知识库的资料上传规范（每个知识库只有一份）
   const [spec, setSpec] = useState<CollectionSpec>(buildPresetSpec());
   const [specEnabled, setSpecEnabled] = useState(true);
+  const [teamKbNodes, setTeamKbNodes] = useState<Record<string, FileNode[]>>(DEFAULT_TEAM_KB_NODES);
+
+  const fileListDisplayConfig = useMemo(
+    () => buildFileListDisplayConfig(specEnabled ? spec : null, specEnabled),
+    [spec, specEnabled]
+  );
   
   // 字段编辑状态
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
@@ -343,10 +407,6 @@ export function TeamKnowledgeBaseView() {
               <h2 className="text-2xl font-medium text-slate-900 mb-2">团队知识库管理</h2>
             </div>
             <div className="flex items-center gap-3 shrink-0">
-              <span className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-sm font-semibold rounded-lg flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5" />
-                当前身份：团队空间管理员
-              </span>
               <button 
                 onClick={() => setViewMode('create')}
                 className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg shadow-sm flex items-center gap-1 hover:bg-blue-700 transition"
@@ -791,14 +851,8 @@ export function TeamKnowledgeBaseView() {
             kbType="team"
             initialRole="admin"
             onBack={() => setViewMode('list')}
-            initialNodes={[
-              { id: 'root', parentId: null, name: '全部文件', type: 'folder', updatedAt: '2026-06-11T10:12:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '系统' },
-              { id: 'f1', parentId: 'root', name: '授信资料', type: 'folder', updatedAt: '2026-06-11T10:12:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '张敏' },
-              { id: 'f2', parentId: 'root', name: '客户经理培训', type: 'folder', updatedAt: '2026-06-10T18:02:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '刘洋' },
-              { id: 'f3', parentId: 'root', name: '历史项目复盘', type: 'folder', updatedAt: '2026-06-09T14:18:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '陈宁' },
-              { id: 'file1', parentId: 'f1', name: '授信资料补录指引.pdf', type: 'document', format: 'pdf', size: 3.42 * 1024 * 1024, updatedAt: '2026-06-11T09:40:00Z', governanceStatus: 'pending', preprocessStatus: 'pending', creator: '刘洋' },
-              { id: 'file2', parentId: 'f2', name: '客户经理培训课件.pptx', type: 'document', format: 'pptx', size: 18.6 * 1024 * 1024, updatedAt: '2026-06-02T10:00:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '张敏' }
-            ]}
+            initialNodes={teamKbNodes[selectedKbId] ?? DEFAULT_TEAM_KB_NODES[selectedKbId] ?? []}
+            fileListDisplayConfig={fileListDisplayConfig}
             extraHeaderActions={
               <div className="flex items-center gap-1">
                 <button onClick={() => setDrawerOpen('members')} className="px-4 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition shadow-sm">成员管理</button>
@@ -1007,41 +1061,36 @@ export function TeamKnowledgeBaseView() {
 
                           {settingsSubTab === 'document' && (
                             <div className="space-y-4">
-                              <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-2xl">
-                                <div>
-                                  <h4 className="text-sm font-medium text-slate-900">开启明文水印</h4>
-                                  <p className="text-sm text-slate-400 mt-1">成员查看、打印时注入带有 ID 的水印。</p>
+                              <div className="p-3 bg-slate-50/50 border border-slate-200 rounded-2xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <h4 className="text-sm font-medium text-slate-900">开启明文水印</h4>
+                                    <p className="text-sm text-slate-400 mt-1">成员查看、打印时注入带有 ID 的水印。</p>
+                                  </div>
+                                  <button 
+                                    onClick={() => setDocWatermark(!docWatermark)}
+                                    className={cn("w-10 h-5 rounded-full relative transition-colors shrink-0", docWatermark ? "bg-blue-600" : "bg-slate-200")}
+                                  >
+                                    <div className={cn("absolute top-0.5 bg-white w-4 h-4 rounded-full transition-all", docWatermark ? "right-0.5" : "left-0.5")} />
+                                  </button>
                                 </div>
-                                <button 
-                                  onClick={() => setDocWatermark(!docWatermark)}
-                                  className={cn("w-10 h-5 rounded-full relative transition-colors", docWatermark ? "bg-blue-600" : "bg-slate-200")}
-                                >
-                                  <div className={cn("absolute top-0.5 bg-white w-4 h-4 rounded-full transition-all", docWatermark ? "right-0.5" : "left-0.5")} />
-                                </button>
-                              </div>
-                              <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-2xl">
-                                <div>
-                                  <h4 className="text-sm font-medium text-slate-900">文档内容加密</h4>
-                                  <p className="text-sm text-slate-400 mt-1">启用后台 AES-256 位加密存储保护。</p>
-                                </div>
-                                <button 
-                                  onClick={() => setDocEncryption(!docEncryption)}
-                                  className={cn("w-10 h-5 rounded-full relative transition-colors", docEncryption ? "bg-blue-600" : "bg-slate-200")}
-                                >
-                                  <div className={cn("absolute top-0.5 bg-white w-4 h-4 rounded-full transition-all", docEncryption ? "right-0.5" : "left-0.5")} />
-                                </button>
-                              </div>
-                              <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-2xl">
-                                <div>
-                                  <h4 className="text-sm font-medium text-slate-900">自动备份</h4>
-                                  <p className="text-sm text-slate-400 mt-1">每日凌晨自动备份团队文档变更。</p>
-                                </div>
-                                <button 
-                                  onClick={() => setDocAutoBackup(!docAutoBackup)}
-                                  className={cn("w-10 h-5 rounded-full relative transition-colors", docAutoBackup ? "bg-blue-600" : "bg-slate-200")}
-                                >
-                                  <div className={cn("absolute top-0.5 bg-white w-4 h-4 rounded-full transition-all", docAutoBackup ? "right-0.5" : "left-0.5")} />
-                                </button>
+                                {docWatermark && (
+                                  <div className="pt-3 border-t border-slate-200/80 space-y-3">
+                                    <div>
+                                      <label className="block text-xs font-medium text-slate-500 mb-1.5">水印内容模板</label>
+                                      <input
+                                        type="text"
+                                        value={watermarkContent}
+                                        onChange={(e) => setWatermarkContent(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="例如：{用户名} {工号} · {访问时间}"
+                                      />
+                                      <p className="text-xs text-slate-400 mt-1.5">
+                                        支持变量：<span className="text-slate-500">{`{用户名}`}</span>、<span className="text-slate-500">{`{工号}`}</span>、<span className="text-slate-500">{`{访问时间}`}</span>、<span className="text-slate-500">{`{知识库名称}`}</span>
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                               <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-2xl">
                                 <div>
@@ -1187,6 +1236,7 @@ export function TeamKnowledgeBaseView() {
                                             <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-28">字段编码</th>
                                             <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-24">输入类型</th>
                                             <th className="px-4 py-2.5 text-center text-xs font-medium text-slate-500 uppercase tracking-wider w-16">必填</th>
+                                            <th className="px-4 py-2.5 text-center text-xs font-medium text-slate-500 uppercase tracking-wider w-24">文件列表展示</th>
                                             <th className="px-2 py-2.5 text-center text-xs font-medium text-slate-500 whitespace-nowrap w-16">排序</th>
                                             <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">操作</th>
                                           </tr>
@@ -1206,6 +1256,11 @@ export function TeamKnowledgeBaseView() {
                                               <td className="px-4 py-3 text-center">
                                                 <span className={cn("text-xs font-medium px-2 py-0.5 rounded whitespace-nowrap", field.required ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-500")}>
                                                   {field.required ? '必填' : '选填'}
+                                                </span>
+                                              </td>
+                                              <td className="px-4 py-3 text-center">
+                                                <span className={cn("text-xs font-medium px-2 py-0.5 rounded whitespace-nowrap", field.showInFileList ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500")}>
+                                                  {field.showInFileList ? '展示' : '不展示'}
                                                 </span>
                                               </td>
                                               <td className="px-2 py-3 text-center whitespace-nowrap">
@@ -1243,8 +1298,8 @@ export function TeamKnowledgeBaseView() {
                                             />
                                           </div>
 
-                                          {/* 字段编码和必填标记 */}
-                                          <div className="grid grid-cols-2 gap-4 mb-4">
+                                          {/* 字段编码、必填、文件列表展示 */}
+                                          <div className="grid grid-cols-3 gap-4 mb-4">
                                             <div>
                                               <label className="text-xs text-slate-500 block mb-1.5">字段编码</label>
                                               <input
@@ -1262,6 +1317,15 @@ export function TeamKnowledgeBaseView() {
                                                 className={cn("w-full px-3 py-2 rounded-lg text-sm font-medium transition", editingFieldDraft?.required ? "bg-rose-50 text-rose-600 border border-rose-200" : "bg-slate-50 text-slate-600 border border-slate-200")}
                                               >
                                                 {editingFieldDraft?.required ? '必填' : '选填'}
+                                              </button>
+                                            </div>
+                                            <div>
+                                              <label className="text-xs text-slate-500 block mb-1.5">是否在文件列表展示</label>
+                                              <button
+                                                onClick={() => setEditingFieldDraft({ ...editingFieldDraft!, showInFileList: !editingFieldDraft?.showInFileList })}
+                                                className={cn("w-full px-3 py-2 rounded-lg text-sm font-medium transition", editingFieldDraft?.showInFileList ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-slate-50 text-slate-600 border border-slate-200")}
+                                              >
+                                                {editingFieldDraft?.showInFileList ? '展示' : '不展示'}
                                               </button>
                                             </div>
                                           </div>
@@ -1402,9 +1466,9 @@ export function TeamKnowledgeBaseView() {
                                         <thead>
                                           <tr className="border-b border-slate-100 bg-slate-50/30">
                                             <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-32">材料类型</th>
-                                            <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-28">必填业务字段</th>
+                                            <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-28">登记文件简述</th>
                                             <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-28">文件类型限制</th>
-                                            <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-28">Excel表头</th>
+                                            <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider min-w-[120px]">excel表头校验</th>
                                             <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">校验提示</th>
                                             <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">操作</th>
                                           </tr>
@@ -1416,30 +1480,13 @@ export function TeamKnowledgeBaseView() {
                                                 <span className="text-sm font-medium text-slate-800">{rule.materialType}</span>
                                               </td>
                                               <td className="px-4 py-3">
-                                                {rule.requiredFields.length === 0 ? (
-                                                  <span className="text-xs text-slate-400">无</span>
-                                                ) : (
-                                                  <div className="flex flex-wrap gap-1">
-                                                    {rule.requiredFields.slice(0, 3).map((fieldCode, idx) => {
-                                                      if (fieldCode === 'file_description') {
-                                                        return (
-                                                          <span key={idx} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded">
-                                                            登记文件简述
-                                                          </span>
-                                                        );
-                                                      }
-                                                      const field = spec.metadataFields.find(f => f.code === fieldCode);
-                                                      return (
-                                                        <span key={idx} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded">
-                                                          {field?.name || fieldCode}
-                                                        </span>
-                                                      );
-                                                    })}
-                                                    {rule.requiredFields.length > 3 && (
-                                                      <span className="text-xs text-slate-400">+{rule.requiredFields.length - 3}</span>
-                                                    )}
-                                                  </div>
-                                                )}
+                                                <input
+                                                  type="checkbox"
+                                                  checked={rule.requiredFields.includes('file_description')}
+                                                  readOnly
+                                                  disabled
+                                                  className="w-4 h-4 text-blue-600 rounded border-slate-300"
+                                                />
                                               </td>
                                               <td className="px-4 py-3">
                                                 <div className="flex flex-wrap gap-1">
@@ -1455,9 +1502,11 @@ export function TeamKnowledgeBaseView() {
                                               </td>
                                               <td className="px-4 py-3">
                                                 {!rule.excelRequiredHeaders || rule.excelRequiredHeaders.length === 0 ? (
-                                                  <span className="text-xs text-slate-400">无</span>
+                                                  <span className="text-xs text-slate-400">-</span>
                                                 ) : (
-                                                  <span className="text-xs text-green-600">有</span>
+                                                  <span className="text-xs text-slate-600" title={rule.excelRequiredHeaders.join('、')}>
+                                                    {rule.excelRequiredHeaders.join('、')}
+                                                  </span>
                                                 )}
                                               </td>
                                               <td className="px-4 py-3">
@@ -1497,33 +1546,28 @@ export function TeamKnowledgeBaseView() {
 
                                           {/* 配置项网格 */}
                                           <div className="grid grid-cols-2 gap-4">
-                                            {/* 必填业务字段 - 改为勾选框 */}
+                                            {/* 登记文件简述 */}
                                             <div>
-                                              <label className="text-xs text-slate-500 block mb-1.5">必填业务字段</label>
-                                              <div className="flex items-center gap-3">
-                                                <label className="flex items-center gap-2 cursor-pointer">
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={(editingRuleDraft?.requiredFields || []).includes('file_description')}
-                                                    onChange={(e) => {
-                                                      const fields = [...(editingRuleDraft?.requiredFields || [])];
-                                                      if (e.target.checked) {
-                                                        if (!fields.includes('file_description')) {
-                                                          fields.push('file_description');
-                                                        }
-                                                      } else {
-                                                        const idx = fields.indexOf('file_description');
-                                                        if (idx > -1) {
-                                                          fields.splice(idx, 1);
-                                                        }
-                                                      }
-                                                      setEditingRuleDraft({ ...editingRuleDraft!, requiredFields: fields });
-                                                    }}
-                                                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                                                  />
-                                                  <span className="text-sm text-slate-700">登记文件简述</span>
-                                                </label>
-                                              </div>
+                                              <label className="text-xs text-slate-500 block mb-1.5">登记文件简述</label>
+                                              <input
+                                                type="checkbox"
+                                                checked={(editingRuleDraft?.requiredFields || []).includes('file_description')}
+                                                onChange={(e) => {
+                                                  const fields = [...(editingRuleDraft?.requiredFields || [])];
+                                                  if (e.target.checked) {
+                                                    if (!fields.includes('file_description')) {
+                                                      fields.push('file_description');
+                                                    }
+                                                  } else {
+                                                    const idx = fields.indexOf('file_description');
+                                                    if (idx > -1) {
+                                                      fields.splice(idx, 1);
+                                                    }
+                                                  }
+                                                  setEditingRuleDraft({ ...editingRuleDraft!, requiredFields: fields });
+                                                }}
+                                                className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                              />
                                             </div>
 
                                             {/* 文件类型限制 - 改为勾选框 */}
@@ -1557,10 +1601,10 @@ export function TeamKnowledgeBaseView() {
                                               </div>
                                             </div>
 
-                                            {/* Excel必填表头 - 只有选择了表格类文件才显示 */}
+                                            {/* excel表头校验 - 只有选择了表格类文件才显示 */}
                                             {['xlsx', 'xls'].some(t => (editingRuleDraft?.fileTypes || []).includes(t)) && (
                                               <div className="col-span-2">
-                                                <label className="text-xs text-slate-500 block mb-1.5">Excel必填表头</label>
+                                                <label className="text-xs text-slate-500 block mb-1.5">excel表头校验</label>
                                                 <div className="flex flex-wrap gap-1 mb-2">
                                                   {(editingRuleDraft?.excelRequiredHeaders || []).map((header, idx) => (
                                                     <span key={idx} className="text-xs px-2 py-1 bg-green-50 text-green-600 rounded flex items-center gap-1">
@@ -1879,7 +1923,15 @@ export function TeamKnowledgeBaseView() {
           spec={activeSpec}
           onClose={() => { setShowUploadSpecModal(false); setActiveSpec(null); }}
           onComplete={(batchMetadata, files) => {
-            showToast(`已成功入库 ${files.filter(f => f.storeStatus === 'stored').length} 个文件`);
+            const storedFiles = files.filter((f) => f.storeStatus === 'stored');
+            if (storedFiles.length > 0) {
+              const newNodes = storedFiles.map((item) => createFileNodeFromUpload(item, batchMetadata));
+              setTeamKbNodes((prev) => ({
+                ...prev,
+                [selectedKbId]: [...(prev[selectedKbId] ?? DEFAULT_TEAM_KB_NODES[selectedKbId] ?? []), ...newNodes],
+              }));
+            }
+            showToast(`已成功入库 ${storedFiles.length} 个文件`);
             setShowUploadSpecModal(false);
             setActiveSpec(null);
           }}

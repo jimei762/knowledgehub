@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   X,
   Upload,
@@ -87,6 +87,7 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
       fileName: file.name,
       materialType: '',
       fieldValues: {},
+      fileTags: [],
       fileTypeValidation: 'pending',
       excelHeaderValidation: 'not_applicable',
       requiredFieldStatus: 'missing',
@@ -152,6 +153,29 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
         const filled = requiredCodes.every((code) => newValues[code]?.trim());
         return { ...f, fieldValues: newValues, requiredFieldStatus: filled ? 'filled' : 'missing' };
       })
+    );
+  };
+
+  const addFileTag = (fileId: string, rawTag: string) => {
+    const tag = rawTag.trim().replace(/[,，;；]/g, '');
+    if (!tag) return;
+    setFiles((prev) =>
+      prev.map((f) => {
+        if (f.id !== fileId) return f;
+        const tags = f.fileTags || [];
+        if (tags.includes(tag)) return f;
+        return { ...f, fileTags: [...tags, tag] };
+      })
+    );
+  };
+
+  const removeFileTag = (fileId: string, tagIndex: number) => {
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.id === fileId
+          ? { ...f, fileTags: (f.fileTags || []).filter((_, i) => i !== tagIndex) }
+          : f
+      )
     );
   };
 
@@ -237,6 +261,16 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
   };
 
   const allStored = files.length > 0 && files.every((f) => f.storeStatus === 'stored');
+  const hasUploadedFiles = files.length > 0;
+  const uploadSuccess = hasUploadedFiles && allStored;
+
+  useEffect(() => {
+    if (currentStep !== 2 || !uploadSuccess) return;
+    const timer = setTimeout(() => {
+      onComplete(batchMetadata, files);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [currentStep, uploadSuccess]);
 
   // --- Render helpers ---
   const renderFieldInput = (
@@ -448,6 +482,7 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
                   <th className="text-left px-4 py-3 font-medium text-slate-600 whitespace-nowrap">文件名</th>
                   <th className="text-left px-4 py-3 font-medium text-slate-600 whitespace-nowrap">材料类型</th>
                   <th className="text-left px-4 py-3 font-medium text-slate-600 whitespace-nowrap">登记文件简述</th>
+                  <th className="text-left px-4 py-3 font-medium text-slate-600 whitespace-nowrap">文件标签登记</th>
                   <th className="text-center px-4 py-3 font-medium text-slate-600 whitespace-nowrap">文件类型校验</th>
                   <th className="text-center px-4 py-3 font-medium text-slate-600 whitespace-nowrap">Excel表头校验</th>
                   <th className="text-center px-4 py-3 font-medium text-slate-600 whitespace-nowrap">入库状态</th>
@@ -525,6 +560,42 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
                           )}
                         </div>
                       </td>
+                      <td className="px-4 py-3">
+                        <div className="w-full min-w-[160px] flex flex-wrap gap-1 p-1.5 bg-white border border-slate-200 rounded-lg focus-within:ring-1 focus-within:ring-blue-100 min-h-[32px] items-center">
+                          {(f.fileTags || []).map((tag, idx) => (
+                            <span
+                              key={`${f.id}-${tag}-${idx}`}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100"
+                            >
+                              #{tag}
+                              <button
+                                type="button"
+                                onClick={() => removeFileTag(f.id, idx)}
+                                className="hover:text-blue-900 border-0 bg-transparent cursor-pointer p-0 leading-none"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                          <input
+                            type="text"
+                            placeholder={(f.fileTags || []).length === 0 ? '输入后回车添加' : ''}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ' || e.key === ',' || e.key === '，') {
+                                e.preventDefault();
+                                addFileTag(f.id, e.currentTarget.value);
+                                e.currentTarget.value = '';
+                              } else if (e.key === 'Backspace' && !e.currentTarget.value) {
+                                const tags = f.fileTags || [];
+                                if (tags.length > 0) {
+                                  removeFileTag(f.id, tags.length - 1);
+                                }
+                              }
+                            }}
+                            className="flex-1 min-w-[60px] bg-transparent outline-none border-0 text-xs text-slate-800 p-0.5"
+                          />
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-center">{renderValidationIcon(f.fileTypeValidation)}</td>
                       <td className="px-4 py-3 text-center">{renderValidationIcon(f.excelHeaderValidation)}</td>
                       <td className="px-4 py-3 text-center">{renderStoreBadge(f.storeStatus)}</td>
@@ -548,7 +619,23 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
     </div>
   );
 
-  const renderStep3 = () => (
+  const renderStep3 = () => {
+    if (uploadSuccess) {
+      return (
+        <div className="flex-1 overflow-auto p-6">
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <CheckCircle2 className="w-16 h-16 text-emerald-500 mb-4" />
+            <h3 className="text-lg font-medium text-slate-900 mb-2">文件上传成功</h3>
+            <p className="text-sm text-slate-500">
+              共 {files.length} 个文件已通过校验并成功入库
+            </p>
+            <p className="text-xs text-slate-400 mt-3">窗口将于 3 秒后自动关闭</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
     <div className="flex-1 overflow-auto p-6">
       <div className="border border-slate-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
@@ -557,7 +644,7 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="text-left px-4 py-3 font-medium text-slate-600 whitespace-nowrap">文件名</th>
                 <th className="text-left px-4 py-3 font-medium text-slate-600 whitespace-nowrap">材料类型</th>
-                <th className="text-center px-4 py-3 font-medium text-slate-600 whitespace-nowrap">必填字段状态</th>
+                <th className="text-center px-4 py-3 font-medium text-slate-600 whitespace-nowrap">登记文件简述</th>
                 <th className="text-center px-4 py-3 font-medium text-slate-600 whitespace-nowrap">文件类型校验</th>
                 <th className="text-center px-4 py-3 font-medium text-slate-600 whitespace-nowrap">Excel表头校验</th>
                 <th className="text-center px-4 py-3 font-medium text-slate-600 whitespace-nowrap">入库状态</th>
@@ -619,6 +706,17 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
                               />
                             </div>
                           ))}
+                          {rule?.requiredFields.includes('file_description') && (
+                            <input
+                              type="text"
+                              className="w-full px-2 py-1 bg-white border border-amber-200 rounded text-xs outline-none focus:ring-1 focus:ring-blue-100"
+                              placeholder="请输入登记文件简述"
+                              value={f.fieldValues['file_description'] || ''}
+                              onChange={(e) =>
+                                handleFileFieldChange(f.id, 'file_description', e.target.value)
+                              }
+                            />
+                          )}
                         </div>
                       ) : (
                         <span
@@ -679,7 +777,8 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
@@ -688,7 +787,7 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">
             <span className="font-medium text-slate-800">
-              规范上传 — {spec.name}
+              上传文件登记
             </span>
             {/* Step indicator */}
             <div className="flex items-center gap-1">
@@ -735,6 +834,7 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
         {currentStep === 2 && renderStep3()}
 
         {/* Footer */}
+        {!(currentStep === 2 && uploadSuccess) && (
         <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between shrink-0 bg-white">
           <div>
             {currentStep > 0 && (
@@ -771,14 +871,20 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
             )}
             {currentStep === 1 && (
               <button
+                disabled={!hasUploadedFiles}
                 onClick={handleSubmitStore}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition shadow-sm shadow-blue-100"
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-medium transition-all',
+                  hasUploadedFiles
+                    ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm shadow-blue-100'
+                    : 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                )}
               >
                 提交入库
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}
-            {currentStep === 2 && (
+            {currentStep === 2 && !uploadSuccess && (
               <button
                 onClick={() => onComplete(batchMetadata, files)}
                 className={cn(
@@ -795,6 +901,7 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
             )}
           </div>
         </div>
+        )}
 
         {/* Toast */}
         {toast && (

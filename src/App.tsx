@@ -47,6 +47,7 @@ export default function App() {
               <PersonalSpace 
                 onSelectKb={(id, name, type, fileId) => setActiveKb({ id, name, type, fileId, sourceMenu: 'personal_space' })}
                 onNavigateToNotifications={() => setActiveNav('notifications')}
+                onNavigateToDiscover={() => setActiveNav('search')}
               />
             )
           ) : activeNav === "favorites" ? (

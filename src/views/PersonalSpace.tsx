@@ -1,8 +1,8 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { api } from "../api";
 import { KnowledgeBase, Subscription, FavoriteItem } from "../types";
-import { cn } from "../lib/utils";
-import { Share2, Star, Clock, ListTodo, Plus, Edit2, Trash2, ShieldAlert, Users, User, Globe, Eye, Download, MessageSquare, ChevronRight, Database, FileText, Layers, X, FileSpreadsheet, FileImage, UserPlus, Check, Folder, Lock } from "lucide-react";
+import { cn, formatPersonalSharedKbName } from "../lib/utils";
+import { Share2, Star, Clock, ListTodo, Plus, Edit2, Trash2, ShieldAlert, User, Globe, Eye, Download, MessageSquare, ChevronRight, Database, FileText, Layers, X, FileSpreadsheet, FileImage, UserPlus, Check, Folder, Lock } from "lucide-react";
 import { format } from "date-fns";
 import { QuickAccessView } from "./QuickAccessView";
 import { MemberSelectorModal } from "../components/MemberSelectorModal";
@@ -45,9 +45,10 @@ type QuickAccessType = 'recent' | 'todo' | 'favorites' | null;
 interface PersonalSpaceProps {
   onSelectKb: (kbId: string, name: string, type: 'personal_own' | 'personal' | 'team' | 'public', fileId?: string) => void;
   onNavigateToNotifications?: () => void;
+  onNavigateToDiscover?: () => void;
 }
 
-export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: PersonalSpaceProps) {
+export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigateToDiscover }: PersonalSpaceProps) {
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -135,18 +136,18 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
   };
     
   // Real Mock States
-  const [modal, setModal] = useState<{type: 'none' | 'create_kb' | 'rename_kb' | 'delete_kb' | 'share_kb', payload?: any}>({ type: 'none' });
+  const [modal, setModal] = useState<{type: 'none' | 'create_kb' | 'edit_kb' | 'delete_kb' | 'share_kb', payload?: any}>({ type: 'none' });
   const [modalInput, setModalInput] = useState('');
+  const [kbDescription, setKbDescription] = useState('');
+  const [kbTags, setKbTags] = useState<string[]>([]);
   const [menuKbId, setMenuKbId] = useState<string | null>(null);
   
   // Share Settings States
-  const [shareTarget, setShareTarget] = useState<'organization' | 'user' | 'public'>('organization');
+  const [shareTarget, setShareTarget] = useState<'user' | 'public'>('user');
   const [sharePermission, setSharePermission] = useState<'view' | 'download' | 'comment'>('view');
   const [shareExpires, setShareExpires] = useState<'7d' | '30d' | 'permanent' | 'custom'>('permanent');
   const [customDate, setCustomDate] = useState('2026-07-10');
   const [shareEmailInput, setShareEmailInput] = useState('');
-  const [shareDescription, setShareDescription] = useState('');
-  const [shareTags, setShareTags] = useState<string[]>([]);
   const [isShareActive, setIsShareActive] = useState(true);
   const [showMemberSelector, setShowMemberSelector] = useState(false);
   const [shareMembers, setShareMembers] = useState<any[]>([]);
@@ -167,7 +168,7 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
   const mockSubscriptions: Subscription[] = [
     { id: "sub_1", kbId: "kb_2", sourceLabel: "team", canCancel: false, canEdit: true, knowledgeBase: mockKnowledgeBases[1] },
     { id: "sub_2", kbId: "kb_3", sourceLabel: "public", canCancel: false, canEdit: false, knowledgeBase: mockKnowledgeBases[2] },
-    { id: "sub_3", kbId: "kb_4", sourceLabel: "personal", canCancel: true, canEdit: false, knowledgeBase: { id: "kb_4", name: "张三的分享资料", ownerType: "personal", visibility: "private", status: "active", updatedAt: "2026-06-05T00:00:00Z" } },
+    { id: "sub_3", kbId: "kb_4", sourceLabel: "personal", sharedBy: "李四", canCancel: true, canEdit: false, knowledgeBase: { id: "kb_4", name: "设计团队素材库", ownerType: "personal", visibility: "private", status: "active", updatedAt: "2026-06-05T00:00:00Z" } },
   ];
 
   useEffect(() => {
@@ -214,15 +215,33 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
     }
   };
 
+  const resetKbForm = () => {
+    setModalInput('');
+    setKbDescription('');
+    setKbTags([]);
+  };
+
+  const openCreateKbModal = () => {
+    resetKbForm();
+    setModal({ type: 'create_kb' });
+  };
+
+  const openEditKbModal = (kb: KnowledgeBase) => {
+    setModalInput(kb.name);
+    setKbDescription(kb.description ?? '');
+    setKbTags(kb.tags ?? []);
+    setModal({ type: 'edit_kb', payload: kb });
+    setMenuKbId(null);
+  };
+
   const openShareModal = (kb: KnowledgeBase) => {
     const settings = kb.shareSettings;
     setIsShareActive(kb.isShared ?? false);
-    setShareTarget(settings?.target ?? 'organization');
+    const savedTarget = settings?.target;
+    setShareTarget(savedTarget === 'public' ? 'public' : 'user');
     setSharePermission(settings?.permission ?? 'view');
     setShareExpires(settings?.expires ?? 'permanent');
     setCustomDate(settings?.customDate ?? '2026-07-10');
-    setShareDescription(settings?.description ?? '');
-    setShareTags(settings?.tags ?? []);
     setShareMembers(
       settings?.emails?.map((email: string, idx: number) => ({ id: `m_${idx}`, name: email })) ?? []
     );
@@ -236,7 +255,6 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
       const updated = kbs.map(k => {
         if (k.id === kbId) {
           const emails = shareMembers.map((m: any) => m.name);
-          const tags = shareTags;
           return {
             ...k,
             isShared: isShareActive,
@@ -246,8 +264,8 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
               expires: shareExpires,
               customDate: shareExpires === 'custom' ? customDate : undefined,
               emails: shareTarget === 'user' ? emails : undefined,
-              description: shareDescription.trim() || undefined,
-              tags: tags.length > 0 ? tags : undefined,
+              description: k.description,
+              tags: k.tags,
               name: k.name
             },
             updatedAt: new Date().toISOString()
@@ -258,7 +276,7 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
       setKbs(updated);
       saveShareSettingsToLocalStorage(updated);
       
-      const targetLabel = shareTarget === 'organization' ? '组织内共享' : shareTarget === 'user' ? '指定用户' : '系统内公开';
+      const targetLabel = shareTarget === 'user' ? '指定用户' : '系统内公开';
       if (isShareActive) {
         showToast(`知识库《${modal.payload.name}》已成功启用并设置为 [${targetLabel}] 共享状态`);
       } else {
@@ -286,6 +304,11 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
 
   const getKbTypeForSub = (label: Subscription['sourceLabel']): 'personal' | 'team' | 'public' =>
     label === 'personal' ? 'personal' : label;
+
+  const getSubscriptionDisplayName = (sub: Subscription) =>
+    sub.sourceLabel === 'personal' && sub.sharedBy
+      ? formatPersonalSharedKbName(sub.sharedBy, sub.knowledgeBase.name)
+      : sub.knowledgeBase.name;
 
   const sourceLabelText = (label: Subscription['sourceLabel'] | 'all' | 'own') => {
     if (label === 'all') return '全部';
@@ -385,8 +408,8 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
                 <div className="fixed inset-0 z-20" onClick={() => setMenuKbId(null)} />
                 <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-slate-200 rounded-lg shadow-xl z-30 py-1">
                   <button className="w-full px-3 py-2 text-sm text-left text-slate-700 hover:bg-slate-50 flex items-center gap-1 border-0 bg-transparent cursor-pointer"
-                    onClick={() => { setModalInput(opts.personalKb!.name); setModal({ type: 'rename_kb', payload: opts.personalKb }); setMenuKbId(null); }}>
-                    <Edit2 className="w-3.5 h-3.5" /> 重命名
+                    onClick={() => openEditKbModal(opts.personalKb!)}>
+                    <Edit2 className="w-3.5 h-3.5" /> 编辑信息
                   </button>
                   <button className="w-full px-3 py-2 text-sm text-left text-slate-700 hover:bg-slate-50 flex items-center gap-1 border-0 bg-transparent cursor-pointer"
                     onClick={() => openShareModal(opts.personalKb!)}>
@@ -432,25 +455,55 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
   };
 
   const executeAction = () => {
-    if (modal.type === 'create_kb' && modalInput.trim()) {
+    if (modal.type === 'create_kb') {
+      if (!modalInput.trim()) {
+        showToast('请填写知识库名称');
+        return;
+      }
       const newKb: KnowledgeBase = {
         id: `kb-${Date.now()}`,
         name: modalInput.trim(),
         ownerType: 'personal',
-        description: '新建的个人知识库',
+        description: kbDescription.trim() || undefined,
+        tags: kbTags.length > 0 ? kbTags : undefined,
         updatedAt: new Date().toISOString()
       };
       setKbs([newKb, ...kbs]);
       showToast('知识库创建成功');
-    } else if (modal.type === 'rename_kb' && modalInput.trim() && modal.payload?.id) {
-      setKbs(kbs.map(k => k.id === modal.payload.id ? { ...k, name: modalInput.trim(), updatedAt: new Date().toISOString() } : k));
-      showToast('重命名成功');
+    } else if (modal.type === 'edit_kb') {
+      if (!modalInput.trim()) {
+        showToast('请填写知识库名称');
+        return;
+      }
+      if (!modal.payload?.id) return;
+      const updated = kbs.map(k => {
+        if (k.id !== modal.payload.id) return k;
+        const updatedKb: KnowledgeBase = {
+          ...k,
+          name: modalInput.trim(),
+          description: kbDescription.trim() || undefined,
+          tags: kbTags.length > 0 ? kbTags : undefined,
+          updatedAt: new Date().toISOString(),
+        };
+        if (updatedKb.isShared && updatedKb.shareSettings) {
+          updatedKb.shareSettings = {
+            ...updatedKb.shareSettings,
+            name: updatedKb.name,
+            description: updatedKb.description,
+            tags: updatedKb.tags,
+          };
+        }
+        return updatedKb;
+      });
+      setKbs(updated);
+      saveShareSettingsToLocalStorage(updated);
+      showToast('知识库信息已更新');
     } else if (modal.type === 'delete_kb' && modal.payload?.id) {
       setKbs(kbs.filter(k => k.id !== modal.payload.id));
       showToast('知识库已删除');
     }
     setModal({ type: 'none' });
-    setModalInput('');
+    resetKbForm();
   };
 
   return (
@@ -534,7 +587,7 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
                 <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                   <h3 className="text-sm font-medium text-slate-900 m-0">个人知识库</h3>
                   <button
-                    onClick={() => setModal({ type: 'create_kb' })}
+                    onClick={openCreateKbModal}
                     className="h-8 inline-flex items-center gap-1 px-2.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition border-0 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" /> 新建
@@ -571,7 +624,11 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
                     <h3 className="text-sm font-medium text-slate-900 m-0">订阅的知识库</h3>
                     <p className="text-xs text-slate-400 mt-0.5">协作共享与组织订阅空间</p>
                   </div>
-                  <button className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-1 bg-white cursor-pointer">
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToDiscover?.()}
+                    className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-1 bg-white cursor-pointer"
+                  >
                     <UserPlus className="w-3.5 h-3.5" /> 浏览发现
                   </button>
                 </div>
@@ -593,17 +650,18 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
                   {filteredSubscriptions.length === 0 ? (
                     <div className="py-10 text-center text-sm text-slate-400">暂无订阅的知识库</div>
                   ) : (
-                    filteredSubscriptions.map(sub =>
-                      renderKbSpaceCard({
+                    filteredSubscriptions.map(sub => {
+                      const displayName = getSubscriptionDisplayName(sub);
+                      return renderKbSpaceCard({
                         cardKey: sub.id,
-                        name: sub.knowledgeBase.name,
+                        name: displayName,
                         badgeLabel: sourceLabelText(sub.sourceLabel),
                         updatedAt: sub.knowledgeBase.updatedAt,
                         previewKbId: sub.kbId,
-                        onOpenKb: () => onSelectKb(sub.knowledgeBase.id, sub.knowledgeBase.name, getKbTypeForSub(sub.sourceLabel)),
-                        onOpenFile: (fileId) => onSelectKb(sub.knowledgeBase.id, sub.knowledgeBase.name, getKbTypeForSub(sub.sourceLabel), fileId),
-                      })
-                    )
+                        onOpenKb: () => onSelectKb(sub.knowledgeBase.id, displayName, getKbTypeForSub(sub.sourceLabel)),
+                        onOpenFile: (fileId) => onSelectKb(sub.knowledgeBase.id, displayName, getKbTypeForSub(sub.sourceLabel), fileId),
+                      });
+                    })
                   )}
                 </div>
               </div>
@@ -693,28 +751,82 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
 
       {/* Action Modals */}
       <AnimatePresence>
-        {['create_kb', 'rename_kb'].includes(modal.type) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+        {['create_kb', 'edit_kb'].includes(modal.type) && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-3">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
                exit={{ opacity: 0, scale: 0.95 }}
-               className="bg-white rounded-2xl shadow-2xl p-6 w-[400px]"
+               className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-[480px]"
              >
                <h3 className="text-[16px] font-medium text-slate-900 mb-4">
-                 {modal.type === 'create_kb' ? '新建个人知识库' : '重命名知识库'}
+                 {modal.type === 'create_kb' ? '新建个人知识库' : '编辑知识库信息'}
                </h3>
-               <input 
-                 type="text" 
-                 value={modalInput}
-                 onChange={e => setModalInput(e.target.value)}
-                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
-                 placeholder="请输入知识库名称..."
-                 autoFocus
-                 onKeyDown={(e) => { if (e.key === 'Enter') executeAction(); }}
-               />
-               <div className="flex justify-end gap-1">
-                 <button onClick={() => setModal({ type: 'none' })} className="px-4 py-2 bg-slate-50 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium cursor-pointer bg-transparent border-0">取消</button>
+               <div className="space-y-4">
+                 <div>
+                   <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                     知识库名称 <span className="text-rose-500">*</span>
+                   </label>
+                   <input 
+                     type="text" 
+                     value={modalInput}
+                     onChange={e => setModalInput(e.target.value)}
+                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                     placeholder="请输入知识库名称..."
+                     autoFocus
+                   />
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium text-slate-700 mb-1.5">知识库描述</label>
+                   <textarea
+                     value={kbDescription}
+                     onChange={e => setKbDescription(e.target.value)}
+                     rows={3}
+                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                     placeholder="简要说明该知识库的用途、内容范围等..."
+                   />
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium text-slate-700 mb-1.5">知识库标签</label>
+                   <div className="w-full flex flex-wrap gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 min-h-[38px] items-center">
+                     {kbTags.map((tag, idx) => (
+                       <span
+                         key={idx}
+                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-sm font-medium border border-blue-100"
+                       >
+                         <span>#{tag}</span>
+                         <button
+                           type="button"
+                           onClick={() => setKbTags(prev => prev.filter((_, i) => i !== idx))}
+                           className="hover:bg-blue-100 text-blue-500 hover:text-blue-700 rounded-full w-3.5 h-3.5 flex items-center justify-center border-0 bg-transparent cursor-pointer p-0"
+                         >
+                           ×
+                         </button>
+                       </span>
+                     ))}
+                     <input
+                       type="text"
+                       placeholder={kbTags.length === 0 ? "输入后敲击回车、空格或逗号添加..." : ""}
+                       onKeyDown={(e) => {
+                         if (e.key === "Enter" || e.key === " " || e.key === "," || e.key === "，" || e.key === ";" || e.key === "；") {
+                           e.preventDefault();
+                           const val = e.currentTarget.value.trim().replace(/[,，;；]/g, '');
+                           if (val && !kbTags.includes(val)) {
+                             setKbTags([...kbTags, val]);
+                           }
+                           e.currentTarget.value = "";
+                         } else if (e.key === "Backspace" && !e.currentTarget.value) {
+                           setKbTags(prev => prev.slice(0, -1));
+                         }
+                       }}
+                       className="flex-1 min-w-[80px] bg-transparent outline-none border-0 text-sm font-medium text-slate-800 p-0.5"
+                     />
+                   </div>
+                   <p className="text-xs text-slate-400 mt-1">选填，便于后续检索与共享展示</p>
+                 </div>
+               </div>
+               <div className="flex justify-end gap-1 mt-6">
+                 <button onClick={() => { setModal({ type: 'none' }); resetKbForm(); }} className="px-4 py-2 bg-slate-50 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium cursor-pointer bg-transparent border-0">取消</button>
                  <button onClick={executeAction} className="px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm font-medium cursor-pointer border-0">确认</button>
                </div>
              </motion.div>
@@ -775,22 +887,9 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
 
                {isShareActive ? (
                  <div className="space-y-4 font-sans text-sm">
-                   {/* Option 1: 共享对象 Selection */}
+                   {/* 共享对象 */}
                    <div>
-                     <div className="grid grid-cols-3 gap-1">
-                       <button
-                         onClick={() => setShareTarget('organization')}
-                         className={cn(
-                           "p-2.5 rounded-xl border text-center flex flex-col items-center gap-1.5 transition-all bg-white cursor-pointer",
-                           shareTarget === 'organization'
-                             ? "border-blue-500 bg-blue-50/50 text-blue-700 shadow-sm font-medium"
-                             : "border-slate-200 text-slate-600 hover:bg-slate-50 font-medium"
-                         )}
-                       >
-                         <Users className="w-4 h-4 text-blue-500" />
-                         <span className="text-sm">组织内共享</span>
-                       </button>
-                       
+                     <div className="grid grid-cols-2 gap-2">
                        <button
                          onClick={() => setShareTarget('user')}
                          className={cn(
@@ -844,76 +943,7 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications }: Persona
 
 
 
-                   {/* Option 1.5: 共享详情 (描述与标签) */}
-                   <div className="space-y-3 bg-blue-50/30 p-3.5 rounded-xl border border-blue-100/60 shadow-xs">
-                     <div>
-                       <label className="block text-sm font-medium text-[#1d4ed8] mb-1">
-                         知识库描述
-                       </label>
-                       <textarea 
-                         value={shareDescription}
-                         onChange={e => setShareDescription(e.target.value)}
-                         className="w-full h-16 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none text-slate-800"
-                         placeholder="清晰阐明此知识库/成果的应用场景与核心干货说明，供订阅者参考..."
-                       />
-                     </div>
-                     <div>
-                       <label className="block text-sm font-medium text-[#1d4ed8] mb-1">
-                         知识库标签
-                        </label>
-                        <div className="w-full flex flex-wrap gap-1.5 p-2 bg-white border border-slate-200 rounded-lg focus-within:ring-1 focus-within:ring-blue-500 min-h-[38px] items-center">
-                          {shareTags.map((tag, idx) => (
-                            <span 
-                              key={idx} 
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-sm font-medium border border-blue-100 shadow-xs"
-                            >
-                              <span>#{tag}</span>
-                              <button
-                                type="button"
-                                onClick={() => setShareTags(prev => prev.filter((_, i) => i !== idx))}
-                                className="hover:bg-blue-100 text-blue-500 hover:text-blue-700 rounded-full w-3.5 h-3.5 flex items-center justify-center border-0 bg-transparent cursor-pointer p-0 text-sm font-medium outline-none"
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))}
-                          <input 
-                            type="text"
-                            placeholder={shareTags.length === 0 ? "输入后敲击回车、空格或逗号添加..." : ""}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " " || e.key === "," || e.key === "，" || e.key === ";" || e.key === "；") {
-                                e.preventDefault();
-                                const val = e.currentTarget.value.trim().replace(/[,，;；]/g, '');
-                                if (val && !shareTags.includes(val)) {
-                                  setShareTags([...shareTags, val]);
-                                }
-                                e.currentTarget.value = "";
-                              } else if (e.key === "Backspace" && !e.currentTarget.value) {
-                                setShareTags(prev => prev.slice(0, -1));
-                              }
-                            }}
-                            className="flex-1 min-w-[80px] bg-transparent outline-none border-0 text-sm font-semibold text-slate-800 p-0.5"
-                          />
-                        </div>
-                        <p className="text-sm font-medium text-slate-400 mt-1">
-                          输入标签文本，并敲击 <span className="text-blue-600 font-medium">回车、空格、或逗号</span> 即可生成独立标签标章。
-                        </p>
-                      </div>
-                      <div className="hidden">
-                        <label className="block text-sm font-medium text-[#1d4ed8] mb-1">
-                          知识库标签
-                       </label>
-                       <input 
-                         type="text"
-                         value={shareTags}
-                         onChange={e => setShareTags(e.target.value)}
-                         className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800"
-                         placeholder="设定便于搜索的标签，多个标签用逗号或空格隔开。例如：零售, 话术, 提效"
-                       />
-                     </div>
-                   </div>
-
-                   {/* Option 2: 权限设置 Selector */}
+                   {/* 权限设置 */}
                    <div>
                      <div className="grid grid-cols-3 gap-1">
                        <button

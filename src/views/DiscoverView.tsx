@@ -108,7 +108,7 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
         const parsed = JSON.parse(saved);
         const customShares: any[] = [];
         Object.entries(parsed).forEach(([kbId, val]: [string, any]) => {
-          if (val.isShared && (val.shareSettings?.target === 'public' || val.shareSettings?.target === 'organization')) {
+          if (val.isShared && val.shareSettings?.target === 'public') {
             customShares.push({
               id: kbId,
               title: val.shareSettings.name || `共享知识库: ${kbId}`,

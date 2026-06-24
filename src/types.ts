@@ -13,10 +13,11 @@ export interface KnowledgeBase {
   visibility?: Visibility;
   status?: string;
   description?: string;
+  tags?: string[];
   updatedAt: string;
   isShared?: boolean;
   shareSettings?: {
-    target: 'organization' | 'user' | 'public';
+    target: 'user' | 'public';
     permission: 'view' | 'download' | 'comment';
     expires: '7d' | '30d' | 'permanent' | 'custom';
     customDate?: string;
@@ -31,6 +32,7 @@ export interface Subscription {
   id: string;
   kbId: string;
   sourceLabel: SourceLabel;
+  sharedBy?: string;
   canCancel: boolean;
   canEdit: boolean;
   knowledgeBase: KnowledgeBase;
@@ -111,10 +113,18 @@ export interface MetadataField {
   inputType: MetadataInputType;
   required: boolean;
   scope: MetadataScope;
+  showInFileList?: boolean;
   options?: MetadataFieldOption[];
   defaultValue?: string;
   placeholder?: string;
   sortOrder: number;
+}
+
+/** 资料上传规范启用时，文件列表额外展示列配置 */
+export interface FileListDisplayConfig {
+  showMaterialType?: boolean;
+  showFileTags?: boolean;
+  metadataFields: MetadataField[];
 }
 
 export interface MaterialTypeRule {
@@ -145,6 +155,7 @@ export interface UploadFileItem {
   fileName: string;
   materialType: string;
   fieldValues: Record<string, string>;
+  fileTags?: string[];
   fileTypeValidation: FileValidationStatus;
   excelHeaderValidation: FileValidationStatus;
   requiredFieldStatus: 'filled' | 'missing';

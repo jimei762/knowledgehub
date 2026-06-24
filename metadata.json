@@ -1,0 +1,6 @@
+{
+  "name": "UDA Knowledge",
+  "description": "UDA Operating Knowledge Management Base Prototype",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

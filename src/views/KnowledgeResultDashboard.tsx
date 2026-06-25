@@ -55,7 +55,7 @@ const hotFiles = [
 
 export function KnowledgeResultDashboard() {
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50">
+    <div className="flex-1 overflow-y-auto">
       <div className="p-8 w-full max-w-[1440px] mx-auto space-y-6">
         
         {/* Header */}
@@ -63,7 +63,7 @@ export function KnowledgeResultDashboard() {
           <div>
             <h1 className="text-2xl font-medium text-slate-900 tracking-normal">知识资产运营看板</h1>
           </div>
-          <div className="text-sm font-medium text-slate-400 bg-white border border-slate-200 px-4 py-2 rounded-lg shadow-sm">
+          <div className="text-sm font-medium text-slate-400 glass-card px-4 py-2 rounded-lg">
             数据更新时间：今天 09:30
           </div>
         </div>
@@ -78,7 +78,7 @@ export function KnowledgeResultDashboard() {
 
         <div className="grid grid-cols-12 gap-6">
           {/* 2. 知识沉淀趋势 */}
-          <div className="col-span-8 bg-white border border-slate-200 rounded-[16px] p-6 shadow-sm">
+          <div className="col-span-8 glass-panel rounded-[16px] p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-base font-medium text-slate-900 flex items-center gap-1">
                 <TrendingUp className="w-4 h-4 text-slate-400" />
@@ -113,7 +113,7 @@ export function KnowledgeResultDashboard() {
           </div>
 
           {/* 3. 知识来源分布 */}
-          <div className="col-span-4 bg-white border border-slate-200 rounded-[16px] p-6 shadow-sm flex flex-col">
+          <div className="col-span-4 glass-panel rounded-[16px] p-6 flex flex-col">
             <h2 className="text-base font-medium text-slate-900 mb-2 flex items-center gap-1">
               <Activity className="w-4 h-4 text-slate-400" />
               组织知识分布
@@ -154,7 +154,7 @@ export function KnowledgeResultDashboard() {
 
         <div className="grid grid-cols-3 gap-6">
           {/* 4. 使用成效 */}
-          <div className="bg-white border border-slate-200 rounded-[16px] p-6 shadow-sm">
+          <div className="glass-panel rounded-[16px] p-6">
             <h2 className="text-base font-medium text-slate-900 mb-5">知识使用成效</h2>
             <div className="space-y-4">
               <MetricItem icon={Eye} label="总预览次数" value="1.2M+" trend="+15%" iconBg="bg-blue-50" iconColor="text-blue-500" />
@@ -165,7 +165,7 @@ export function KnowledgeResultDashboard() {
           </div>
 
           {/* 8. 质量概览 */}
-          <div className="bg-white border border-slate-200 rounded-[16px] p-6 shadow-sm">
+          <div className="glass-panel rounded-[16px] p-6">
             <h2 className="text-base font-medium text-slate-900 mb-5">知识质量概览</h2>
             <div className="grid gap-3">
               <QualityMetric label="已完成安全治理" value="98.5%" desc="包含脱敏及合规审查" color="emerald" />
@@ -176,7 +176,7 @@ export function KnowledgeResultDashboard() {
           </div>
 
           {/* 7. 团队共建 */}
-          <div className="bg-white border border-slate-200 rounded-[16px] p-6 shadow-sm">
+          <div className="glass-panel rounded-[16px] p-6">
             <h2 className="text-base font-medium text-slate-900 mb-5">团队共建活跃度</h2>
             <div className="space-y-4">
               <div className="flex justify-between items-end border-b border-slate-100 pb-3">
@@ -203,7 +203,7 @@ export function KnowledgeResultDashboard() {
 
         {/* 5 & 6. 排行与发布 */}
         <div className="grid grid-cols-2 gap-6">
-          <div className="bg-white border border-slate-200 rounded-[16px] p-6 shadow-sm overflow-hidden flex flex-col">
+          <div className="glass-panel rounded-[16px] p-6 overflow-hidden flex flex-col">
             <h2 className="text-base font-medium text-slate-900 mb-4 flex items-center gap-1">
               <Flame className="w-4 h-4 text-rose-500" />
               高价值资料 Top 5 (按被下载/借阅)
@@ -236,7 +236,7 @@ export function KnowledgeResultDashboard() {
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-[16px] p-6 shadow-sm overflow-hidden flex flex-col">
+          <div className="glass-panel rounded-[16px] p-6 overflow-hidden flex flex-col">
             <h2 className="text-base font-medium text-slate-900 mb-4 flex items-center gap-1">
               <Globe className="w-4 h-4 text-blue-500" />
               热门公共知识库 Top 5
@@ -282,7 +282,7 @@ export function KnowledgeResultDashboard() {
 
 function StatCard({ title, value, icon: Icon, color, bg, trend }: any) {
   return (
-    <div className="bg-white border border-slate-200 rounded-[16px] p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+    <div className="glass-panel rounded-[16px] p-6 hover:shadow-md transition-shadow relative overflow-hidden group">
       <div className={`absolute top-0 right-0 w-24 h-24 rounded-bl-full opacity-20 -mr-4 -mt-4 transition-transform group-hover:scale-110 ${bg}`}></div>
       <div className="flex items-start justify-between relative z-10">
         <div className="space-y-4">

@@ -116,7 +116,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
   const getHeader = () => {
     switch (type) {
       case 'recent': return { title: '最近访问', icon: Clock, color: 'text-blue-600', bg: 'bg-blue-50' };
-      case 'todo': return { title: '待我处理', icon: ListTodo, color: 'text-blue-600', bg: 'bg-blue-50' };
+      case 'todo': return { title: '待办事项', icon: ListTodo, color: 'text-blue-600', bg: 'bg-blue-50' };
       case 'favorites': return { title: '我的收藏', icon: Star, color: 'text-blue-600', bg: 'bg-blue-50' };
     }
   };
@@ -254,11 +254,10 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 absolute inset-0 z-20 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300 font-sans">
-      <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-to-b from-white to-slate-50/0 pointer-events-none z-0"></div>
+    <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300 font-sans">
       
       {/* Header Bar */}
-      <header className="h-16 px-6 flex items-center justify-between border-b border-slate-200 bg-white/85 backdrop-blur-md shrink-0 relative z-10 shadow-xs">
+      <header className="h-16 px-6 flex items-center justify-between glass-header shrink-0 relative z-10">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors">
             <ArrowLeft className="w-5 h-5" />
@@ -272,7 +271,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
               <p className="text-sm text-slate-400 font-medium uppercase tracking-wider block leading-snug">
                 {type === 'todo' && 'AI 协同智能审批治理'}
                 {type === 'favorites' && '差异备忘录与高智分类'}
-                {type === 'recent' && '个人最近打开痕迹存档'}
+                {type === 'recent' && '个人最近访问痕迹存档'}
               </p>
             </div>
           </div>
@@ -287,7 +286,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={`在 ${header.title} 内执行检索匹配...`} 
-              className="w-full pl-9 pr-4 py-1.5 bg-slate-50/80 border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all placeholder:text-slate-400/80"
+              className="w-full pl-9 pr-4 py-1.5 glass-input rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all placeholder:text-slate-400/80"
             />
           </div>
           
@@ -298,8 +297,8 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
                 setSelectedFavIds([]);
               }}
               className={cn(
-                "h-[30px] px-3.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all text-slate-600 border border-slate-200 bg-white hover:bg-slate-50 shadow-sm",
-                isBulkMode && "bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100"
+                "h-[30px] px-3.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all text-slate-600 glass-card hover:bg-white/50",
+                isBulkMode && "glass-card-active text-blue-600"
               )}
             >
               <CheckSquare className="w-3.5 h-3.5" />
@@ -309,7 +308,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
 
           <button 
             onClick={() => showToast('已成功拉取最新异动状态并重新对齐数据')}
-            className="p-1.5 text-slate-500 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 transition-colors shadow-sm"
+            className="p-1.5 text-slate-500 glass-card rounded-lg hover:bg-white/50 transition-colors"
             title="刷新数据"
           >
             <RefreshCcw className="w-3.5 h-3.5" />
@@ -318,19 +317,19 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
       </header>
 
       {/* Main Responsive Canvas Layout */}
-      <div className="flex-1 overflow-hidden flex relative z-10 w-full bg-[#f8fafc]">
+      <div className="flex-1 overflow-hidden flex relative z-10 w-full">
         
         {/* Left Side Content - Lists */}
         <div className="flex-1 overflow-auto p-6 md:p-8">
           <div className="w-full max-w-[1440px] mx-auto space-y-6">
             
-            {/* 1. TO-DO SECTION (待我处理) */}
+            {/* 1. TO-DO SECTION (待办事项) */}
             {type === 'todo' && (
               <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
                 
                 {/* Todo sidebar filters */}
                 <div className="space-y-4">
-                  <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-3">
+                  <div className="glass-panel rounded-xl p-3 space-y-3">
                     <div className="text-sm font-medium uppercase text-slate-400 tracking-wider">治理工作台分类</div>
                     <div className="flex flex-col gap-1.5">
                       {[
@@ -345,7 +344,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
                           onClick={() => setTodoCategory(tab.id)}
                           className={cn(
                             "w-full flex items-center justify-between p-2 rounded-lg text-sm font-medium transition-colors border-0 text-left",
-                            todoCategory === tab.id ? "bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200/50" : "text-slate-600 hover:bg-slate-50 border border-transparent"
+                            todoCategory === tab.id ? "glass-card-active text-blue-700" : "text-slate-600 hover:bg-white/40 border border-transparent"
                           )}
                         >
                           <span>{tab.label}</span>
@@ -365,7 +364,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
 
                   {/* Clear state */}
                   {filteredTodos.length === 0 ? (
-                    <div className="border border-dashed border-slate-200 bg-white rounded-2xl p-12 text-center flex flex-col items-center justify-center">
+                    <div className="border border-dashed border-white/60 glass-panel rounded-2xl p-12 text-center flex flex-col items-center justify-center">
                       <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center mb-4">
                         <Check className="w-8 h-8" />
                       </div>
@@ -390,8 +389,8 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
                             key={todo.id} 
                             onClick={() => handleOpenTodoWorkbench(todo)}
                             className={cn(
-                              "p-3 bg-white border rounded-xl cursor-pointer hover:shadow-sm transition-all text-left group flex items-center gap-3 border-slate-200",
-                              isActive && "ring-2 ring-blue-400 border-blue-400 shadow-md bg-blue-50/20"
+                              "p-3 glass-card rounded-xl cursor-pointer hover:shadow-md transition-all text-left group flex items-center gap-3",
+                              isActive && "glass-card-active ring-2 ring-blue-400/50"
                             )}
                           >
                             <div className={cn("p-2.5 rounded-xl shrink-0", 
@@ -457,7 +456,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
                         onClick={() => {
                           if (item.kbId && onNavigateToKB) onNavigateToKB(item.kbId, item.id);
                         }}
-                        className="group relative bg-white border border-slate-200 rounded-2xl p-3 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/5 transition-all cursor-pointer flex flex-col"
+                        className="group relative glass-card rounded-2xl p-3 hover:border-blue-400/60 hover:shadow-xl hover:shadow-blue-500/5 transition-all cursor-pointer flex flex-col"
                       >
                         {/* Status Badge */}
                         <div className="absolute top-4 right-4 text-[9px] font-medium uppercase tracking-tighter text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full opacity-60 group-hover:opacity-100 transition-opacity">
@@ -541,7 +540,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
                 
                 {/* Favorites Sidebar: Folders */}
                 <div className="space-y-4 sticky top-0">
-                  <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm space-y-4">
+                  <div className="glass-panel rounded-2xl p-3 space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="text-sm font-medium uppercase text-slate-400 tracking-wider">我的收藏夹</div>
                       <button 
@@ -558,7 +557,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
                         onClick={() => setActiveFolderId('all')}
                         className={cn(
                           "w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all border-0 text-left",
-                          activeFolderId === 'all' ? "bg-slate-900 text-white shadow-md" : "text-slate-600 hover:bg-slate-50"
+                          activeFolderId === 'all' ? "bg-slate-900/90 text-white shadow-md" : "text-slate-600 hover:bg-white/40"
                         )}
                       >
                         <div className="flex items-center gap-1.5">
@@ -580,7 +579,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
                               onClick={() => setActiveFolderId(folder.id)}
                               className={cn(
                                 "w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all border-0 text-left",
-                                activeFolderId === folder.id ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200" : "text-slate-600 hover:bg-slate-50"
+                                activeFolderId === folder.id ? "glass-card-active text-blue-700" : "text-slate-600 hover:bg-white/40"
                               )}
                             >
                               <div className="flex items-center gap-1.5 truncate">
@@ -627,13 +626,13 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
                 <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-3">
                     {/* 双维度过滤器：区分文件夹与文件 */}
-                    <div className="flex bg-slate-200/60 p-0.5 rounded-lg border border-slate-200 items-center shadow-2xs shrink-0 select-none">
+                    <div className="flex glass-card p-0.5 rounded-lg items-center shrink-0 select-none">
                       <button
                         onClick={() => setFavTypeFilter('all')}
                         className={cn(
                           "px-3 py-1 text-sm font-medium rounded-md transition-all border-0 cursor-pointer",
                           favTypeFilter === 'all'
-                            ? "bg-white text-slate-950 shadow-xs"
+                            ? "glass-card-active text-slate-950"
                             : "text-slate-600 hover:text-slate-800 bg-transparent"
                         )}
                         type="button"
@@ -645,7 +644,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
                         className={cn(
                           "px-3 py-1 text-sm font-medium rounded-md transition-all border-0 cursor-pointer flex items-center gap-1",
                           favTypeFilter === 'folder'
-                            ? "bg-white text-indigo-750 shadow-xs"
+                            ? "glass-card-active text-indigo-750"
                             : "text-slate-600 hover:text-indigo-600 bg-transparent"
                         )}
                         type="button"
@@ -658,7 +657,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
                         className={cn(
                           "px-3 py-1 text-sm font-medium rounded-md transition-all border-0 cursor-pointer flex items-center gap-1",
                           favTypeFilter === 'file'
-                            ? "bg-white text-blue-750 shadow-xs"
+                            ? "glass-card-active text-blue-750"
                             : "text-slate-600 hover:text-blue-600 bg-transparent"
                         )}
                         type="button"
@@ -700,7 +699,7 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
 
                 {/* Favorites Grid with Memo Field, Custom Notes, and Selection Indicator */}
                 {filteredFavorites.length === 0 ? (
-                  <div className="border border-dashed border-slate-200 bg-white rounded-2xl p-16 text-center">
+                  <div className="border border-dashed border-white/60 glass-panel rounded-2xl p-16 text-center">
                     <FolderHeart className="w-12 h-12 text-blue-300 mx-auto mb-3" />
                     <h3 className="font-medium text-slate-800 text-base">暂未搜索到相匹配的收藏资料</h3>
                     <p className="text-sm text-slate-400 font-medium mt-1">您可在知识库详情页内，将重要、高频的文件一键拉入我的收藏。</p>
@@ -729,8 +728,8 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
                             }
                           }}
                           className={cn(
-                            "bg-white border rounded-xl hover:shadow-md cursor-pointer transition-all flex flex-col group relative overflow-hidden",
-                            isSelected ? "border-blue-400 shadow-[0_4px_14px_rgba(59,130,246,0.08)] bg-blue-50/10 ring-1 ring-blue-300" : "border-slate-200 hover:border-blue-200",
+                            "glass-card rounded-xl hover:shadow-md cursor-pointer transition-all flex flex-col group relative overflow-hidden",
+                            isSelected ? "glass-card-active ring-1 ring-blue-300" : "border-slate-200/70 ring-1 ring-slate-200/40 hover:border-blue-200/70",
                             isBulkMode && "pointer-events-auto"
                           )}
                         >
@@ -860,10 +859,10 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
               initial={{ opacity: 0, x: 100 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 100 }}
-              className="w-[440px] border-l border-slate-200 bg-white shadow-2xl relative z-40 flex flex-col shrink-0 h-full animate-in slide-in-from-right-8 duration-300"
+              className="w-[440px] border-l border-white/50 glass-flyout relative z-40 flex flex-col shrink-0 h-full animate-in slide-in-from-right-8 duration-300"
             >
               {/* Drawer header */}
-              <div className="p-5 border-b border-slate-100 bg-slate-50/70 shrink-0 flex items-start justify-between text-left">
+              <div className="p-5 border-b border-white/40 glass-header shrink-0 flex items-start justify-between text-left">
                 <div>
                   <div className="flex items-center gap-1.5 text-sm font-medium uppercase text-blue-600 tracking-wider">
                     <Sparkles className="w-3 h-3" />
@@ -1207,12 +1206,12 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
       {/* Toast Notification */}
       <AnimatePresence>
         {['create', 'rename'].includes(showFolderModal.type) && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center glass-overlay">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
                exit={{ opacity: 0, scale: 0.95 }}
-               className="bg-white rounded-2xl shadow-2xl p-6 w-[400px]"
+               className="glass-modal rounded-2xl p-6 w-[400px]"
              >
                <h3 className="text-[16px] font-medium text-slate-900 mb-4">
                  {showFolderModal.type === 'create' ? '新建收藏夹' : '重命名收藏夹'}
@@ -1249,12 +1248,12 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
         )}
 
         {showFolderModal.type === 'delete' && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center glass-overlay">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
                exit={{ opacity: 0, scale: 0.95 }}
-               className="bg-white rounded-2xl shadow-2xl p-6 w-[400px]"
+               className="glass-modal rounded-2xl p-6 w-[400px]"
              >
                <h3 className="text-[16px] font-medium text-blue-600 flex items-center gap-1 mb-2">
                  确认删除此收藏夹
@@ -1272,12 +1271,12 @@ export function QuickAccessView({ type, onBack, onNavigateToKB }: QuickAccessVie
         )}
 
         {showFolderModal.type === 'move_item' && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center glass-overlay">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
                exit={{ opacity: 0, scale: 0.95 }}
-               className="bg-white rounded-2xl shadow-2xl p-6 w-[400px]"
+               className="glass-modal rounded-2xl p-6 w-[400px]"
              >
                <h3 className="text-[16px] font-medium text-slate-900 mb-2 flex items-center gap-1">
                  <FolderHeart className="w-4 h-4 text-blue-500" />

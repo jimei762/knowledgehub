@@ -9,13 +9,14 @@ type NoticeNavTarget = {
   fileId?: string;
   kbName: string;
   kbType: 'personal_own' | 'personal' | 'team' | 'public';
+  sharePermission?: 'view' | 'download' | 'comment';
 };
 
 const NOTIFICATION_NAV_TARGETS: Record<string, NoticeNavTarget> = {
   'UDA_运营平台PRD_v1.pdf': { kbId: 'kb_1', fileId: 'file1', kbName: '个人整理资料', kbType: 'personal_own' },
   '营销素材_设计稿.zip': { kbId: 'kb_1', fileId: 'file2', kbName: '个人整理资料', kbType: 'personal_own' },
   '2026开门红活动': { kbId: 'kb_2', kbName: '2026开门红活动', kbType: 'team' },
-  '设计团队素材库': { kbId: 'kb_4', kbName: '张三的分享资料', kbType: 'personal' },
+  '设计团队素材库': { kbId: 'kb_4', kbName: '李四的分享资料："设计团队素材库"', kbType: 'personal', sharePermission: 'comment' },
 };
 
 function enrichNotification(notice: any) {
@@ -37,6 +38,7 @@ function resolveNoticeNavigation(notice: any): NoticeNavTarget | null {
     fileId: enriched.fileId,
     kbName: enriched.kbName || '知识库',
     kbType: enriched.kbType || 'personal',
+    sharePermission: enriched.sharePermission,
   };
 }
 
@@ -105,7 +107,7 @@ const mockNotifications = [
   }
 ];
 
-export function NotificationCenter({ onNavigateToKB }: { onNavigateToKB?: (kbId: string, fileId: string | undefined, kbName: string, kbType: string) => void }) {
+export function NotificationCenter({ onNavigateToKB }: { onNavigateToKB?: (kbId: string, fileId: string | undefined, kbName: string, kbType: string, sharePermission?: 'view' | 'download' | 'comment') => void }) {
   const loadNotifications = () => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("local_notifications") : null;
     const raw = saved ? JSON.parse(saved).filter((n: any) => n.type !== 'governance') : mockNotifications;
@@ -149,7 +151,7 @@ export function NotificationCenter({ onNavigateToKB }: { onNavigateToKB?: (kbId:
   const handlePreviewNavigate = (notice: any) => {
     const target = resolveNoticeNavigation(notice);
     if (!target || !onNavigateToKB) return;
-    onNavigateToKB(target.kbId, target.fileId, target.kbName, target.kbType);
+    onNavigateToKB(target.kbId, target.fileId, target.kbName, target.kbType, target.sharePermission);
   };
 
   const activeNoticeTarget = activeNotice ? resolveNoticeNavigation(activeNotice) : null;
@@ -175,7 +177,7 @@ export function NotificationCenter({ onNavigateToKB }: { onNavigateToKB?: (kbId:
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f8fafc] overflow-y-auto relative z-0">
+    <div className="flex-1 flex flex-col h-full overflow-y-auto relative z-0">
       <div className="p-5 md:p-6 pb-7 w-full max-w-[1440px] mx-auto min-h-full flex flex-col gap-3">
         <div className="flex items-start justify-between py-1">
           <div>
@@ -203,7 +205,7 @@ export function NotificationCenter({ onNavigateToKB }: { onNavigateToKB?: (kbId:
         </div>
 
         <div className="grid grid-cols-[220px_minmax(420px,1fr)] gap-3 flex-1 min-h-0 items-start">
-          <aside className="p-3.5 bg-white border border-slate-200 rounded-[10px] shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <aside className="p-3.5 glass-panel rounded-[10px]">
             <h3 className="text-sm font-medium text-slate-900 m-0 mb-3.5">通知分类</h3>
             <div className="grid gap-1.5">
               {[
@@ -231,8 +233,8 @@ export function NotificationCenter({ onNavigateToKB }: { onNavigateToKB?: (kbId:
             </div>
           </aside>
 
-          <section className="bg-white border border-slate-200 rounded-[10px] shadow-[0_1px_2px_rgba(15,23,42,0.04)] flex flex-col h-full overflow-hidden relative">
-            <div className="flex items-center justify-between gap-3 p-3.5 px-4 border-b border-slate-100">
+          <section className="glass-panel rounded-[10px] flex flex-col h-full overflow-hidden relative">
+            <div className="flex items-center justify-between gap-3 p-3.5 px-4 border-b border-white/40">
               <div>
                 <div className="text-sm font-medium text-slate-400 uppercase tracking-widest leading-none mb-1">全部通知</div>
                 <h3 className="text-sm font-medium text-slate-900 m-0">协作通知</h3>

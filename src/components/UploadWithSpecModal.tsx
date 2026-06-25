@@ -781,8 +781,8 @@ export const UploadWithSpecModal: React.FC<UploadWithSpecModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-      <div className="w-full max-w-4xl max-h-[90vh] bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col border border-slate-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 glass-overlay">
+      <div className="w-full max-w-4xl max-h-[90vh] glass-modal rounded-xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-4">

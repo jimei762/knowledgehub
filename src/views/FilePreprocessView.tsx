@@ -9,13 +9,14 @@ import { ENTITY_TYPE_OPTIONS } from "../constants";
 interface FilePreprocessViewProps {
   file: any; // Accept custom nodes as well
   canEdit?: boolean;
+  readOnlyHint?: string;
   onBack: () => void;
   onCompleteGovernance?: (fileId: string) => void;
 }
 
 type TabType = 'overview' | 'ocr' | 'summary' | 'slices';
 
-export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGovernance }: FilePreprocessViewProps) {
+export function FilePreprocessView({ file, canEdit = false, readOnlyHint, onBack, onCompleteGovernance }: FilePreprocessViewProps) {
   const [detail, setDetail] = useState<FilePreprocessDetail | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [toast, setToast] = useState<string | null>(null);
@@ -121,9 +122,9 @@ export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGo
 
   if (isProcessing) {
     return (
-      <div className="flex-1 flex flex-col h-full bg-slate-50 z-20 absolute inset-0">
+      <div className="flex-1 flex flex-col h-full z-20 absolute inset-0">
         {/* Header */}
-        <header className="h-14 px-6 flex items-center justify-between border-b border-slate-200 bg-white shrink-0 shadow-sm relative z-30">
+        <header className="h-14 px-6 flex items-center justify-between glass-header shrink-0 relative z-30">
           <div className="flex items-center gap-3">
             <button onClick={onBack} disabled className="p-1.5 text-slate-300">
               <ArrowLeft className="w-5 h-5" />
@@ -136,8 +137,8 @@ export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGo
           </div>
         </header>
 
-        <div className="flex-1 flex items-center justify-center bg-slate-50 font-sans">
-          <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl p-8 shadow-xl text-center space-y-6">
+        <div className="flex-1 flex items-center justify-center font-sans">
+          <div className="max-w-md w-full glass-panel rounded-2xl p-8 text-center space-y-6">
             <div className="flex justify-center">
               <div className="relative w-16 h-16">
                 <div className="absolute inset-0 rounded-full border-4 border-slate-100"></div>
@@ -200,7 +201,7 @@ export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGo
 
   if (!detail) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-slate-50">
+      <div className="flex-1 flex items-center justify-center">
         <div className="text-slate-500 flex flex-col items-center">
           <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
           <p>加载预处理结果中...</p>
@@ -210,7 +211,7 @@ export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGo
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 z-20 absolute inset-0">
+    <div className="flex-1 flex flex-col h-full z-20 absolute inset-0">
       {toast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-800 text-white rounded-xl shadow-2xl px-6 py-3.5 z-[9999] flex items-center gap-2.5 font-medium text-sm animate-in fade-in slide-in-from-top-4 duration-300">
           <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
@@ -218,7 +219,7 @@ export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGo
         </div>
       )}
       {/* Header */}
-      <header className="h-14 px-6 flex items-center justify-between border-b border-slate-200 bg-white shrink-0 shadow-sm relative z-30">
+      <header className="h-14 px-6 flex items-center justify-between glass-header shrink-0 relative z-30">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors font-sans">
             <ArrowLeft className="w-5 h-5" />
@@ -283,6 +284,12 @@ export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGo
         </div>
       </header>
 
+      {readOnlyHint && !canEdit && (
+        <div className="px-6 py-2.5 bg-amber-50 border-b border-amber-100 text-sm text-amber-800 font-medium shrink-0">
+          {readOnlyHint}
+        </div>
+      )}
+
       <div className="flex-1 flex overflow-hidden">
         {/* Left Pane: Original File Preview */}
         <div className="flex-1 flex flex-col border-r border-slate-200 bg-slate-100/80 relative z-10 shadow-[inset_-10px_0_15px_-10px_rgba(0,0,0,0.05)]">
@@ -344,9 +351,9 @@ export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGo
         </div>
 
         {/* Right Pane: Governance Results & Editing Panel */}
-        <div className="w-[500px] xl:w-[600px] flex flex-col bg-slate-50 shrink-0 relative z-20 shadow-[-8px_0_20px_-10px_rgba(0,0,0,0.1)]">
+        <div className="w-[500px] xl:w-[600px] flex flex-col glass-sidebar-panel shrink-0 relative z-20">
            {/* Top Navigation Tabs for Right Panel */}
-           <div className="flex items-end px-4 pt-3 border-b border-slate-200 bg-white gap-1">
+           <div className="flex items-end px-4 pt-3 border-b border-white/40 glass-header gap-1">
              <button
                onClick={() => setActiveTab('overview')}
                className={cn("px-4 py-2.5 text-sm font-medium border-b-2 transition-all flex items-center gap-1", activeTab === 'overview' ? "border-blue-600 text-blue-700 bg-blue-50/50" : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50")}
@@ -379,13 +386,13 @@ export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGo
            </div>
 
            {/* Right Panel Main Content */}
-           <div className="flex-1 overflow-auto p-6 lg:p-8 bg-slate-50">
+           <div className="flex-1 overflow-auto p-6 lg:p-8">
              {/* Error/Running banners are removed */}
              
               {/* === OVERVIEW TAB === */}
               {activeTab === 'overview' && (
                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                 <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                 <div className="glass-panel rounded-xl p-5">
                    <h3 className="text-sm font-semibold text-slate-800 mb-4 uppercase tracking-wider">入库质量评分</h3>
                    <div className="flex items-center gap-6">
                       <div className="flex flex-col items-center gap-1 relative">
@@ -416,7 +423,7 @@ export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGo
                    </div>
                  </div>
 
-                 <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                 <div className="glass-panel rounded-xl p-5">
                     <h3 className="text-sm font-semibold text-slate-800 mb-4 uppercase tracking-wider flex items-center gap-1">
                       <ShieldAlert className="w-4 h-4 text-amber-500" />
                       检测报告与异常
@@ -522,7 +529,7 @@ export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGo
               {/* === SUMMARY & TAGS TAB === */}
               {activeTab === 'summary' && (
                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                 <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                 <div className="glass-panel rounded-xl p-5">
                    <div className="flex items-center justify-between mb-4">
                      <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider flex items-center gap-1"><Tags className="w-4 h-4 text-blue-500"/> 智能打标</h3>
                      {canEdit && (
@@ -578,7 +585,7 @@ export function FilePreprocessView({ file, canEdit = false, onBack, onCompleteGo
                    </div>
                  </div>
 
-                 <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                 <div className="glass-panel rounded-xl p-5">
                    <div className="flex items-center justify-between mb-4">
                      <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wider flex items-center gap-1"><MessageSquareText className="w-4 h-4 text-blue-500"/> 文档摘要</h3>
                      {canEdit && (

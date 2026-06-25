@@ -1,9 +1,34 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Database, Users, ShieldAlert, Shield, FileText, Settings, Plus, Search, ChevronRight, BarChart3, Clock, Lock, Bell, Download, MonitorPlay, X, ArrowLeft, MoreHorizontal, FileArchive, CheckCircle2, Sliders, Globe, Grid, List, Check, ThumbsUp, AlertCircle, RefreshCw, Send, Eye, ShieldCheck, Tag, UserPlus, Trash2, ChevronDown, Info } from "lucide-react";
 import { cn } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { KnowledgeBaseDetail } from "./KnowledgeBaseDetail";
+import type { FileNode } from "./KnowledgeBaseDetail";
 import { MemberSelectorModal } from "../components/MemberSelectorModal";
+import { KnowledgeBaseConsoleLayout, type KbConsoleTab } from "../components/knowledge-base/KnowledgeBaseConsoleLayout";
+import { OverviewDetailCard, OverviewInfoCard, OverviewSectionTitle } from "../components/knowledge-base/OverviewCards";
+
+interface PublicKnowledgeBaseViewProps {
+  consoleTab?: KbConsoleTab;
+  onConsoleTabChange?: (tab: KbConsoleTab) => void;
+}
+
+type PublicationStatus = "published" | "offline" | "archived" | "approved";
+
+interface PublicKbPublishedDoc {
+  id: string;
+  name: string;
+  category: string;
+  size: string;
+  editor: string;
+  time: string;
+  publishedAt: string;
+  publicationStatus: PublicationStatus;
+  requiredReading: boolean;
+  downloadable: boolean;
+  readStats?: { read: number; total?: number };
+  downloadStats: { downloads: number; totalEligible: number };
+}
 
 // Mock Data for Public Knowledge Bases (aligned with DiscoverView names!)
 const initialPublicKbs = [
@@ -29,9 +54,62 @@ const initialPublicKbs = [
       { id: "app2", title: "大额存单提前支取争议口径优化版.docx", department: "深圳分行客诉组", applicant: "江明珠", time: "昨日" }
     ],
     documents: [
-      { id: "d1", name: "网点服务标准手册 2026 版.pdf", category: "合规话术", size: "12.4 MB", editor: "王敏", time: "3天前" },
-      { id: "d2", name: "高风险投诉应急话术.docx", category: "客诉标准", size: "4.1 MB", editor: "赵云杰", time: "昨日" },
-      { id: "d3", name: "厅堂排队冲突解决指引方案.pptx", category: "运营效率", size: "18.2 MB", editor: "林珊", time: "本周二" }
+      {
+        id: "d1",
+        name: "网点服务标准手册 2026 版.pdf",
+        category: "合规话术",
+        size: "12.4 MB",
+        editor: "王敏",
+        time: "3天前",
+        publishedAt: "2026-06-08",
+        publicationStatus: "published",
+        requiredReading: true,
+        downloadable: true,
+        readStats: { read: 2184, total: 2706 },
+        downloadStats: { downloads: 412, totalEligible: 2706 },
+      },
+      {
+        id: "d2",
+        name: "高风险投诉应急话术.docx",
+        category: "客诉标准",
+        size: "4.1 MB",
+        editor: "赵云杰",
+        time: "昨日",
+        publishedAt: "2026-06-10",
+        publicationStatus: "published",
+        requiredReading: true,
+        downloadable: false,
+        readStats: { read: 1896, total: 2706 },
+        downloadStats: { downloads: 0, totalEligible: 0 },
+      },
+      {
+        id: "d3",
+        name: "厅堂排队冲突解决指引方案.pptx",
+        category: "运营效率",
+        size: "18.2 MB",
+        editor: "林珊",
+        time: "本周二",
+        publishedAt: "2026-06-09",
+        publicationStatus: "published",
+        requiredReading: false,
+        downloadable: true,
+        readStats: { read: 1246 },
+        downloadStats: { downloads: 186, totalEligible: 2706 },
+      },
+      {
+        id: "d_off1",
+        name: "2025 版网点服务标准手册.pdf",
+        category: "合规话术",
+        size: "10.8 MB",
+        editor: "王敏",
+        time: "2025-12-20",
+        publishedAt: "2025-12-20",
+        publicationStatus: "offline",
+        requiredReading: false,
+        downloadable: false,
+        readStats: { read: 2105 },
+        downloadStats: { downloads: 892, totalEligible: 0 },
+      },
     ]
   },
   {
@@ -53,7 +131,20 @@ const initialPublicKbs = [
     tags: ["授信复盘", "风控案例", "项目闭环"],
     pendingApprovals: [],
     documents: [
-      { id: "d_r1", name: "某新能源头部企业50亿银团贷款复盘报告.pdf", category: "项目闭环", size: "22.5 MB", editor: "陈波", time: "1周前" }
+      {
+        id: "d_r1",
+        name: "某新能源头部企业50亿银团贷款复盘报告.pdf",
+        category: "项目闭环",
+        size: "22.5 MB",
+        editor: "陈波",
+        time: "1周前",
+        publishedAt: "2026-06-04",
+        publicationStatus: "published",
+        requiredReading: true,
+        downloadable: true,
+        readStats: { read: 628, total: 892 },
+        downloadStats: { downloads: 156, totalEligible: 892 },
+      },
     ]
   },
   {
@@ -63,8 +154,8 @@ const initialPublicKbs = [
     owner: "零售运营部",
     subs: "1.5 万",
     files: 740,
-    status: "审核中",
-    statusTone: "warning",
+    status: "运行中",
+    statusTone: "success",
     updatedAt: "今日 09:30",
     creator: "林珊",
     category: "方案 / 策划",
@@ -77,8 +168,48 @@ const initialPublicKbs = [
       { id: "app3", title: "开门红定存大转盘分支行配置模板.xlsx", department: "苏南区域管理部", applicant: "郑涛", time: "昨天" }
     ],
     documents: [
-      { id: "d4", name: "2026年开门红活动总体方案.pdf", category: "活动玩法", size: "8.5 MB", editor: "林珊", time: "今日 09:12" },
-      { id: "d5", name: "客户精细分层触达短信大全.docx", category: "客户触达", size: "1.2 MB", editor: "张敏", time: "3天前" }
+      {
+        id: "d4",
+        name: "2026年开门红活动总体方案.pdf",
+        category: "活动玩法",
+        size: "8.5 MB",
+        editor: "林珊",
+        time: "今日 09:12",
+        publishedAt: "2026-06-11",
+        publicationStatus: "published",
+        requiredReading: true,
+        downloadable: true,
+        readStats: { read: 9820, total: 15000 },
+        downloadStats: { downloads: 2340, totalEligible: 15000 },
+      },
+      {
+        id: "d5",
+        name: "客户精细分层触达短信大全.docx",
+        category: "客户触达",
+        size: "1.2 MB",
+        editor: "张敏",
+        time: "3天前",
+        publishedAt: "2026-06-08",
+        publicationStatus: "published",
+        requiredReading: false,
+        downloadable: true,
+        readStats: { read: 4320 },
+        downloadStats: { downloads: 680, totalEligible: 15000 },
+      },
+      {
+        id: "d_off2",
+        name: "2025 开门红活动复盘模板.xlsx",
+        category: "活动玩法",
+        size: "2.1 MB",
+        editor: "林珊",
+        time: "2025-03-15",
+        publishedAt: "2025-03-15",
+        publicationStatus: "offline",
+        requiredReading: false,
+        downloadable: false,
+        readStats: { read: 890 },
+        downloadStats: { downloads: 1200, totalEligible: 0 },
+      },
     ]
   },
   {
@@ -100,7 +231,20 @@ const initialPublicKbs = [
     tags: ["修订通知", "合规细则", "查询索引"],
     pendingApprovals: [],
     documents: [
-      { id: "d6", name: "重要空白凭证保管操作规程.pdf", category: "合规细则", size: "6.8 MB", editor: "周维", time: "5天前" }
+      {
+        id: "d6",
+        name: "重要空白凭证保管操作规程.pdf",
+        category: "合规细则",
+        size: "6.8 MB",
+        editor: "周维",
+        time: "5天前",
+        publishedAt: "2026-06-06",
+        publicationStatus: "published",
+        requiredReading: true,
+        downloadable: false,
+        readStats: { read: 5890, total: 7001 },
+        downloadStats: { downloads: 0, totalEligible: 0 },
+      },
     ]
   },
   {
@@ -110,9 +254,9 @@ const initialPublicKbs = [
     owner: "培训学院",
     subs: "1,520",
     files: 2120,
-    status: "治理中",
-    statusTone: "warning",
-    updatedAt: "6月2日",
+    status: "已归档",
+    statusTone: "archived",
+    updatedAt: "2026-05-28 归档",
     creator: "张艳",
     category: "素材 / 课件",
     cover: "培训\n课件",
@@ -124,26 +268,268 @@ const initialPublicKbs = [
       { id: "app4", title: "运营系统V3.2最新改造重点考试试题.docx", department: "业务科技部", applicant: "刘星", time: "3天前" }
     ],
     documents: [
-      { id: "d7", name: "新入司柜员岗位学习全景路径图.pdf", category: "入职必修", size: "3.7 MB", editor: "张艳", time: "5/28" }
+      {
+        id: "d7",
+        name: "新入司柜员岗位学习全景路径图.pdf",
+        category: "入职必修",
+        size: "3.7 MB",
+        editor: "张艳",
+        time: "5/28",
+        publishedAt: "2026-05-28",
+        publicationStatus: "published",
+        requiredReading: true,
+        downloadable: true,
+        readStats: { read: 1280, total: 1520 },
+        downloadStats: { downloads: 890, totalEligible: 1520 },
+      },
     ]
   }
 ];
 
-export function PublicKnowledgeBaseView() {
+const PUBLIC_KBS_STORAGE_KEY = "public_kbs_data_v3";
+const LEGACY_PUBLIC_KBS_STORAGE_KEY = "public_kbs_data_v2";
+
+const MOCK_PUBLISHED_DOC_SEED = new Map(
+  initialPublicKbs.flatMap((kb) => kb.documents.map((doc) => [doc.id, doc] as const))
+);
+
+function parseSubsCount(subs: string): number {
+  const normalized = subs.replace(/,/g, "").trim();
+  if (normalized.includes("万")) {
+    return Math.round(parseFloat(normalized) * 10000);
+  }
+  return parseInt(normalized, 10) || 1000;
+}
+
+function getFileViewDocuments(documents: PublicKbPublishedDoc[]) {
+  return documents.filter(
+    (d) =>
+      d.publicationStatus === "published" ||
+      d.publicationStatus === "approved" ||
+      d.publicationStatus === "offline"
+  );
+}
+
+function getPublicationViewDocuments(documents: PublicKbPublishedDoc[]) {
+  return documents.filter((d) => d.publicationStatus === "published" || d.publicationStatus === "offline");
+}
+
+function normalizePublishedDoc(doc: Partial<PublicKbPublishedDoc> & { id: string; name: string }, subs: string): PublicKbPublishedDoc {
+  const seed = MOCK_PUBLISHED_DOC_SEED.get(doc.id);
+  const total = parseSubsCount(subs);
+  const requiredReading = doc.requiredReading ?? seed?.requiredReading ?? false;
+  const publicationStatus = (doc.publicationStatus ?? seed?.publicationStatus ?? "published") as PublicationStatus;
+
+  let readStats = doc.readStats ?? seed?.readStats;
+  if (requiredReading) {
+    readStats = {
+      read: readStats?.read ?? Math.round(total * 0.72),
+      total: readStats?.total ?? total,
+    };
+  } else if (readStats?.read === undefined) {
+    readStats = { read: Math.round(total * 0.15) };
+  }
+
+  return {
+    id: doc.id,
+    name: doc.name,
+    category: doc.category ?? "未分类",
+    size: doc.size ?? "1.0 MB",
+    editor: doc.editor ?? "系统",
+    time: doc.time ?? "未知",
+    publishedAt: doc.publishedAt ?? "2026-06-01",
+    publicationStatus,
+    requiredReading,
+    downloadable: doc.downloadable ?? true,
+    readStats,
+    downloadStats: doc.downloadStats ?? { downloads: 0, totalEligible: total },
+  };
+}
+
+function normalizeKbLifecycleStatus(kb: { status: string; statusTone: string }) {
+  if (kb.status === "已归档") {
+    return { status: "已归档" as const, statusTone: "archived" as const };
+  }
+  return { status: "运行中" as const, statusTone: "success" as const };
+}
+
+function normalizePublicKbs(data: typeof initialPublicKbs) {
+  return data.map((kb) => ({
+    ...kb,
+    ...normalizeKbLifecycleStatus(kb),
+    documents: (kb.documents ?? []).map((doc) =>
+      normalizePublishedDoc(doc as Partial<PublicKbPublishedDoc> & { id: string; name: string }, kb.subs)
+    ),
+  }));
+}
+
+function parseDocSize(sizeStr: string): number {
+  const match = sizeStr.match(/^([\d.]+)\s*(MB|KB|GB)?/i);
+  if (!match) return 1024 * 1024;
+  const num = parseFloat(match[1]);
+  const unit = (match[2] || "MB").toUpperCase();
+  if (unit === "GB") return num * 1024 * 1024 * 1024;
+  if (unit === "KB") return num * 1024;
+  return num * 1024 * 1024;
+}
+
+function nodeIdToDocId(nodeId: string): string {
+  return nodeId.startsWith("file_") ? nodeId.slice(5) : nodeId;
+}
+
+function publishStatusToPublicationStatus(
+  status?: FileNode["publishStatus"],
+  prev?: PublicKbPublishedDoc,
+  isOfflineDraft?: boolean
+): PublicationStatus {
+  if (isOfflineDraft || (status === "approved" && prev?.publicationStatus === "offline")) {
+    return "offline";
+  }
+  switch (status) {
+    case "published":
+      return "published";
+    case "offline":
+      return "offline";
+    case "archived":
+      return "archived";
+    case "approved":
+    case "pending_audit":
+    default:
+      return "approved";
+  }
+}
+
+function mergePublicKbNodesIntoDocuments(
+  existingDocs: PublicKbPublishedDoc[],
+  nodes: FileNode[],
+  subs: string
+): PublicKbPublishedDoc[] {
+  const fileNodes = nodes.filter((n) => n.type !== "folder");
+  const activeDocIds = new Set(fileNodes.map((n) => nodeIdToDocId(n.id)));
+
+  const fromNodes: PublicKbPublishedDoc[] = fileNodes.map((node) => {
+    const docId = nodeIdToDocId(node.id);
+    const prev = existingDocs.find((d) => d.id === docId);
+    const publicationStatus = publishStatusToPublicationStatus(
+      node.publishStatus,
+      prev,
+      node.isOfflineDraft
+    );
+    const today = new Date().toISOString().slice(0, 10);
+
+    return normalizePublishedDoc(
+      {
+        id: docId,
+        name: node.name,
+        category: prev?.category ?? "未分类",
+        size: node.size ? `${(node.size / 1024 / 1024).toFixed(1)} MB` : prev?.size ?? "0 MB",
+        editor: node.creator ?? prev?.editor ?? "管理员",
+        time: prev?.time ?? "刚刚",
+        publishedAt:
+          publicationStatus === "published"
+            ? prev?.publishedAt && prev.publishedAt !== "-"
+              ? prev.publishedAt
+              : today
+            : prev?.publishedAt ?? "-",
+        publicationStatus,
+        requiredReading: node.isRequiredRead ?? prev?.requiredReading ?? false,
+        downloadable: node.downloadable ?? prev?.downloadable ?? true,
+        readStats: prev?.readStats,
+        downloadStats: prev?.downloadStats,
+      },
+      subs
+    );
+  });
+
+  const preserved = existingDocs.filter(
+    (d) =>
+      !activeDocIds.has(d.id) &&
+      (d.publicationStatus === "offline" || d.publicationStatus === "archived")
+  );
+
+  return [...fromNodes, ...preserved];
+}
+
+function buildPublicKbNodes(documents: PublicKbPublishedDoc[]): FileNode[] {
+  const activeDocs = getFileViewDocuments(documents);
+  const now = new Date().toISOString();
+  return [
+    {
+      id: "root",
+      parentId: null,
+      name: "全部文件",
+      type: "folder",
+      updatedAt: now,
+      governanceStatus: "success",
+      preprocessStatus: "success",
+      creator: "系统",
+    },
+    {
+      id: "f1",
+      parentId: "root",
+      name: "公开标准件",
+      type: "folder",
+      updatedAt: now,
+      governanceStatus: "success",
+      preprocessStatus: "success",
+      creator: "admin",
+    },
+    ...activeDocs.map((doc) => {
+      const ext = doc.name.split(".").pop()?.toLowerCase() || "pdf";
+      let type: FileNode["type"] = "document";
+      if (["ppt", "pptx"].includes(ext)) type = "presentation";
+      else if (["xlsx", "xls"].includes(ext)) type = "spreadsheet";
+
+      const publishStatus: FileNode["publishStatus"] =
+        doc.publicationStatus === "published"
+          ? "published"
+          : doc.publicationStatus === "archived"
+            ? "archived"
+            : doc.publicationStatus === "offline"
+              ? "approved"
+              : "approved";
+
+      return {
+        id: `file_${doc.id}`,
+        parentId: "f1",
+        name: doc.name,
+        type,
+        format: ext,
+        size: parseDocSize(doc.size),
+        updatedAt: now,
+        governanceStatus: "success" as const,
+        preprocessStatus: "success" as const,
+        creator: doc.editor,
+        publishStatus,
+        isRequiredRead: doc.requiredReading,
+        downloadable: doc.downloadable,
+        isOfflineDraft: doc.publicationStatus === "offline",
+      };
+    }),
+  ];
+}
+
+export function PublicKnowledgeBaseView({ consoleTab = "public", onConsoleTabChange }: PublicKnowledgeBaseViewProps = {}) {
   const [publicKbs, setPublicKbs] = useState(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("public_kbs_data") : null;
-    return saved ? JSON.parse(saved) : initialPublicKbs;
+    if (typeof window === "undefined") return normalizePublicKbs(initialPublicKbs);
+    const saved = localStorage.getItem(PUBLIC_KBS_STORAGE_KEY);
+    if (saved) return normalizePublicKbs(JSON.parse(saved));
+    const legacy = localStorage.getItem(LEGACY_PUBLIC_KBS_STORAGE_KEY);
+    if (legacy) return normalizePublicKbs(JSON.parse(legacy));
+    return normalizePublicKbs(initialPublicKbs);
   });
 
   const savePublicKbs = (nextValue: typeof initialPublicKbs) => {
-    setPublicKbs(nextValue);
-    localStorage.setItem("public_kbs_data", JSON.stringify(nextValue));
+    const normalized = normalizePublicKbs(nextValue);
+    setPublicKbs(normalized);
+    localStorage.setItem(PUBLIC_KBS_STORAGE_KEY, JSON.stringify(normalized));
   };
 
   useEffect(() => {
-    // If not set yet, store initial
-    if (!localStorage.getItem("public_kbs_data")) {
-      localStorage.setItem("public_kbs_data", JSON.stringify(initialPublicKbs));
+    if (!localStorage.getItem(PUBLIC_KBS_STORAGE_KEY)) {
+      const legacy = localStorage.getItem(LEGACY_PUBLIC_KBS_STORAGE_KEY);
+      const raw = legacy ? JSON.parse(legacy) : initialPublicKbs;
+      localStorage.setItem(PUBLIC_KBS_STORAGE_KEY, JSON.stringify(normalizePublicKbs(raw)));
     }
   }, []);
 
@@ -155,6 +541,7 @@ export function PublicKnowledgeBaseView() {
   const [configuredPositions, setConfiguredPositions] = useState<string[]>(['对公客户经理']);
   const [viewMode, setViewMode] = useState<"list" | "workbench" | "create">("list");
   const [workbenchMode, setWorkbenchMode] = useState<"detail" | "manage">("detail");
+  const [detailFileId, setDetailFileId] = useState<string | undefined>(undefined);
   const [showMemberSelector, setShowMemberSelector] = useState(false);
   const [createStep, setCreateStep] = useState(1);
   const [authorizedMembers, setAuthorizedMembers] = useState([
@@ -176,17 +563,82 @@ export function PublicKnowledgeBaseView() {
     targetRoles: [] as string[],
     targetPositions: [] as string[]
   });
-  const [workbenchTab, setWorkbenchTab] = useState<"approvals" | "documents" | "security" | "history">("approvals");
+  const [workbenchTab, setWorkbenchTab] = useState<"approvals" | "publications" | "security" | "history">("approvals");
+  const [publicationStatusFilter, setPublicationStatusFilter] = useState<"all" | "published" | "offline">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("全部");
-  
   const [toast, setToast] = useState<string | null>(null);
+  const [showArchiveKbConfirm, setShowArchiveKbConfirm] = useState(false);
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
 
   const selectedKb = publicKbs.find(kb => kb.id === selectedKbId) || publicKbs[0];
+  const selectedKbArchived = selectedKb.status === "已归档";
+
+  useEffect(() => {
+    if (viewMode === "workbench" && selectedKbArchived) {
+      setViewMode("list");
+      showToast("该知识库已归档，不可进入或执行操作");
+    }
+  }, [viewMode, selectedKbId, selectedKbArchived]);
+
+  const publicKbNodes = useMemo(
+    () => buildPublicKbNodes(selectedKb.documents),
+    [selectedKb.documents]
+  );
+
+  const handlePublicKbNodesChange = useCallback(
+    (nodes: FileNode[]) => {
+      setPublicKbs((prev) => {
+        const kb = prev.find((k) => k.id === selectedKbId);
+        if (!kb) return prev;
+        const nextDocs = mergePublicKbNodesIntoDocuments(kb.documents, nodes, kb.subs);
+        if (JSON.stringify(nextDocs) === JSON.stringify(kb.documents)) {
+          return prev;
+        }
+        const next = prev.map((k) =>
+          k.id === selectedKbId ? { ...k, documents: nextDocs } : k
+        );
+        const normalized = normalizePublicKbs(next);
+        localStorage.setItem(PUBLIC_KBS_STORAGE_KEY, JSON.stringify(normalized));
+        return normalized;
+      });
+    },
+    [selectedKbId]
+  );
+
+  const publicationDocs = useMemo(() => {
+    let docs = getPublicationViewDocuments(selectedKb.documents);
+    if (publicationStatusFilter === "published") {
+      docs = docs.filter((d) => d.publicationStatus === "published");
+    } else if (publicationStatusFilter === "offline") {
+      docs = docs.filter((d) => d.publicationStatus === "offline");
+    }
+    return [...docs].sort((a, b) => {
+      if (a.requiredReading !== b.requiredReading) {
+        return a.requiredReading ? -1 : 1;
+      }
+      return b.publishedAt.localeCompare(a.publishedAt);
+    });
+  }, [selectedKb.documents, publicationStatusFilter]);
+
+  const activePublishedCount = useMemo(
+    () => getFileViewDocuments(selectedKb.documents).length,
+    [selectedKb.documents]
+  );
+
+  useEffect(() => {
+    setDetailFileId(undefined);
+    setPublicationStatusFilter("all");
+  }, [selectedKbId]);
+
+  const handleResendReadingReminder = (doc: PublicKbPublishedDoc) => {
+    if (!doc.requiredReading || !doc.readStats?.total) return;
+    const unread = doc.readStats.total - doc.readStats.read;
+    showToast(`已向 ${unread} 位未读成员再次下发「${doc.name}」阅读提示`);
+  };
 
   const getStatusColor = (tone: string) => {
     switch (tone) {
@@ -206,13 +658,6 @@ export function PublicKnowledgeBaseView() {
     return matchesSearch && matchesCat;
   });
 
-  // Pin / Toggle Pin status (this alters which item is featured on Discover Portal!)
-  const handleTogglePin = (id: string, currentStatus: boolean) => {
-    savePublicKbs(publicKbs.map(kb => 
-      kb.id === id ? { ...kb, isPinned: !currentStatus } : kb
-    ));
-    showToast(currentStatus ? '已从“发现 - 精选”中移除' : '已成功置顶精选至“发现 - 精选”首页');
-  };
 
   // Accept a file publication request
   const handleApprovePublication = (kbId: string, appId: string) => {
@@ -221,14 +666,19 @@ export function PublicKnowledgeBaseView() {
         const approvedItem = kb.pendingApprovals.find(app => app.id === appId);
         if (approvedItem) {
           // Push to documents and increase file count
-          const newDoc = {
+          const newDoc: PublicKbPublishedDoc = {
             id: `approved_${Date.now()}`,
             name: approvedItem.title,
             category: "分行呈审",
             size: "3.2 MB",
             editor: approvedItem.applicant,
             time: "刚刚审核通过",
-            publishStatus: 'approved'
+            publishedAt: "-",
+            publicationStatus: "approved",
+            requiredReading: false,
+            downloadable: true,
+            readStats: { read: 0 },
+            downloadStats: { downloads: 0, totalEligible: parseSubsCount(kb.subs) },
           };
           return {
             ...kb,
@@ -241,7 +691,7 @@ export function PublicKnowledgeBaseView() {
       }
       return kb;
     }));
-    showToast('该呈报文档已通过安全及敏感词合规校验，成功发布至公共知识空间！');
+    showToast('审核通过，文件已进入待发布状态，请前往文件视图手动发布');
   };
 
   // Reject publication request
@@ -258,16 +708,38 @@ export function PublicKnowledgeBaseView() {
     showToast('呈报已被退回。退回原因：文件涉敏或格式不规范。已通知申请人。');
   };
 
+  const handleArchivePublicKb = () => {
+    const archiveLabel = `${new Date().toISOString().slice(0, 10)} 归档`;
+    savePublicKbs(
+      publicKbs.map((kb) =>
+        kb.id === selectedKbId
+          ? {
+              ...kb,
+              status: "已归档",
+              statusTone: "archived",
+              updatedAt: archiveLabel,
+              pendingApprovals: [],
+            }
+          : kb
+      )
+    );
+    setShowArchiveKbConfirm(false);
+    showToast(`「${selectedKb.name}」已归档，不可再执行任何操作`);
+    setViewMode("list");
+    setWorkbenchMode("detail");
+    setWorkbenchTab("security");
+  };
+
   // Security Policy variables
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
   const [logDownloadRequired, setLogDownloadRequired] = useState(true);
   const [roleVerifyRequired, setRoleVerifyRequired] = useState(false);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-auto w-full font-sans">
+    <div className="flex-1 flex flex-col h-full overflow-hidden w-full font-sans">
       {viewMode === "create" ? (
-        <div className="p-6 md:p-12 w-full flex flex-col items-center overflow-auto min-h-0 bg-slate-50">
-          <div className="w-full max-w-[800px] border border-slate-200 bg-white rounded-2xl shadow-sm flex flex-col my-8 shrink-0">
+        <div className="p-6 md:p-12 w-full flex flex-col items-center overflow-auto min-h-0">
+          <div className="w-full max-w-[800px] glass-panel rounded-2xl flex flex-col my-8 shrink-0">
             <div className="px-10 pt-10 pb-4 text-left">
               <div className="flex items-center gap-3 mb-6">
                 <button 
@@ -595,7 +1067,9 @@ export function PublicKnowledgeBaseView() {
                 <div className={cn("h-1.5 rounded-full transition-all duration-300", createStep === 5 ? "w-10 bg-blue-600" : "w-3 bg-slate-200")} />
               </div>
               <div className="flex items-center gap-3">
-                <button onClick={() => { setViewMode('list'); setCreateStep(1); }} className="px-5 py-2 text-slate-500 font-medium text-sm hover:text-slate-800 transition">取消</button>
+                {createStep !== 5 && (
+                  <button onClick={() => { setViewMode('list'); setCreateStep(1); }} className="px-5 py-2 text-slate-500 font-medium text-sm hover:text-slate-800 transition">取消</button>
+                )}
                 <button 
                   onClick={() => {
                     if (createStep < 5) setCreateStep(createStep + 1);
@@ -610,254 +1084,182 @@ export function PublicKnowledgeBaseView() {
           </div>
         </div>
       ) : viewMode === "list" ? (
-        <div className="p-6 md:p-8 w-full max-w-[1440px] mx-auto space-y-6">
-          
-          {/* Header Banner */}
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-2xl font-medium text-slate-900 mb-2">公共知识库管理</h2>
-            </div>
-            
-            <div className="flex items-center gap-3 shrink-0 select-none">
-              <span className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-xl shadow-xs">
-                当前：公共空间超级管理员
-              </span>
-              <button 
-                onClick={() => setViewMode('create')}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg shadow-sm flex items-center gap-1 hover:bg-blue-700 transition"
-              >
-                <Plus className="w-4 h-4" /> 新建公共知识库
-              </button>
-            </div>
-          </div>
-
-          {/* Quick Metrics Statistics Panel */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex flex-col justify-between text-left relative overflow-hidden group hover:border-blue-300 transition-colors">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="text-[9.5px] uppercase font-medium text-slate-400 tracking-wider mb-1">受控公共大类</div>
-                  <div className="text-2xl font-medium text-slate-900 font-mono leading-none">{publicKbs.length}</div>
-                </div>
-                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-medium text-sm">公</div>
-              </div>
-              <div className="text-sm text-slate-500 mt-3 font-semibold">覆盖全行运营、信贷、零售领域</div>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex flex-col justify-between text-left relative overflow-hidden group hover:border-indigo-300 transition-colors">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="text-[9.5px] uppercase font-medium text-slate-400 tracking-wider mb-1">全行累计订阅人次</div>
-                  <div className="text-2xl font-medium text-slate-900 font-mono leading-none">2.6 万</div>
-                </div>
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-medium text-sm">订</div>
-              </div>
-              <div className="text-sm text-slate-500 mt-3 font-semibold">全行网点主动更新及自动投递覆盖率</div>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex flex-col justify-between text-left relative overflow-hidden group hover:border-amber-300 transition-colors">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="text-[9.5px] uppercase font-medium text-slate-400 tracking-wider mb-1">分行呈审待审核</div>
-                  <div className="text-2xl font-medium text-slate-900 font-mono leading-none text-amber-600 animate-pulse">
-                    {publicKbs.reduce((acc, curr) => acc + curr.pendingApprovals.length, 0)}
-                  </div>
-                </div>
-                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-medium text-sm">审</div>
-              </div>
-              <div className="text-sm text-slate-500 mt-3 font-semibold">分子机构新成果呈报，需人机协同审核</div>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex flex-col justify-between text-left relative overflow-hidden group hover:border-emerald-300 transition-colors">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="text-[9.5px] uppercase font-medium text-slate-400 tracking-wider mb-1">水印安全保障率</div>
-                  <div className="text-2xl font-medium text-slate-900 font-mono leading-none text-emerald-600">100%</div>
-                </div>
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-medium text-sm">密</div>
-              </div>
-              <div className="text-sm text-slate-500 mt-3 font-semibold">敏感级图文完全覆盖追溯隐形水印</div>
-            </div>
-          </div>
-
-          {/* Core Master-Detail Work Canvas */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
-            
-            {/* Left Library List */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col text-left">
-              
-              {/* Toolbar search within list */}
-              <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
-                <div>
-                  <h3 className="font-medium text-slate-800 text-sm">公共知识库清单</h3>
-                </div>
-                
-                <div className="flex items-center gap-1">
-                  {/* Category Chips inside filter */}
-                  <div className="flex items-center gap-1">
-                    {['全部', '方案 / 策划', '制度 / 规范', '素材 / 课件', '项目 / 复盘'].map(cat => (
-                      <button 
-                        key={cat} 
-                        onClick={() => setCategoryFilter(cat)}
-                        className={cn(
-                          "px-2 py-1 text-sm font-medium rounded ", 
-                          categoryFilter === cat ? "bg-blue-600 text-white font-medium shadow-md shadow-blue-100" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                        )}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                  
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input 
-                      type="text" 
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="快检公共知识库..." 
-                      className="pl-8 pr-2.5 py-1 w-40 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Infinite list rows */}
-              <div className="divide-y divide-slate-100">
-                {filteredKbs.map((kb) => (
-                  <div 
-                    key={kb.id} 
-                    onClick={() => setSelectedKbId(kb.id)}
-                    className={cn(
-                      "grid grid-cols-[1.5fr_1fr_1fr_110px] gap-3 p-5 items-center cursor-pointer transition-colors",
-                      selectedKbId === kb.id ? "bg-blue-50/20 ring-1 ring-inset ring-blue-100" : "hover:bg-slate-50/80"
-                    )}
-                  >
-                    <div className="flex gap-3.5 items-start min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-medium text-sm shrink-0 shadow-xs">
-                        {kb.name.slice(0, 2)}
-                      </div>
-                      <div className="min-w-0">
-                    <div className="flex items-center gap-1">
-                        <h4 
-                          onClick={(e) => { e.stopPropagation(); setSelectedKbId(kb.id); setViewMode("workbench"); setWorkbenchMode("detail"); }}
-                          className="font-medium text-slate-900 text-[14px] truncate hover:text-blue-600 hover:underline cursor-pointer"
-                        >
-                          {kb.name}
-                        </h4>
-                        {kb.isPinned && (
-                          <span className="bg-amber-100/90 border border-amber-200 text-amber-800 text-[9px] font-medium tracking-widest px-1.5 py-0.5 rounded-full scale-90">发现精选</span>
-                        )}
-                      </div>
-                        <p className="text-sm text-slate-500 truncate mt-1 line-clamp-1">{kb.desc}</p>
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {kb.tags.map(t => <span key={t} className="px-2 py-0.5 bg-slate-100 text-slate-500 text-sm font-medium rounded-md border border-slate-200/50">{t}</span>)}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <div className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-1">发布主体</div>
-                      <div className="text-sm font-medium text-slate-700">@{kb.owner}</div>
-                    </div>
-
-                    <div>
-                      <div className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-1">订阅人 / 公共文件</div>
-                      <div className="text-sm font-medium text-slate-700 font-mono">{kb.subs}人 / {kb.files}份</div>
-                    </div>
-
-                    <div>
-                      <div className="flex gap-1 justify-end">
-                        <span className={cn("inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-sm font-medium border", getStatusColor(kb.statusTone))}>
-                          {kb.status}
-                        </span>
-                      </div>
-                      <div className="text-sm font-medium text-slate-400 mt-1 text-right">{kb.updatedAt}</div>
-                    </div>
-                  </div>
-                ))}
-
-                {filteredKbs.length === 0 && (
-                  <div className="p-16 text-center text-slate-400 font-medium">没有找到匹配检索的受控大型公共知识库。</div>
-                )}
-              </div>
-            </div>
-
-            {/* Right Quick Panel Summary of Selected Public KB */}
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 flex flex-col text-left space-y-5">
-              <div className="border-b border-slate-100 pb-4">
-                <div className="flex justify-between items-start gap-1">
-                  <div className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-[9px] font-medium tracking-widest uppercase shrink-0">公立索引大类</div>
-                  <span className={cn("px-2.5 py-0.5 rounded-full text-sm font-medium border shrink-0", getStatusColor(selectedKb.statusTone))}>
-                    {selectedKb.status}
-                  </span>
-                </div>
-                
-                <h3 className="text-[15.5px] font-medium text-slate-900 mt-2 hover:text-blue-600 transition-colors">
-                  {selectedKb.name}
-                </h3>
-                <p className="text-sm text-slate-500 mt-2 leading-relaxed font-semibold">{selectedKb.desc}</p>
-              </div>
-
-              {/* Core Information Grid */}
-              <div className="space-y-4">
-                <div>
-                  <div className="text-sm font-medium text-slate-400 uppercase tracking-widest mb-1.5">分发属性统计</div>
-                  <div className="grid grid-cols-2 gap-3 pb-4">
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                      <span className="text-sm font-medium text-slate-400 block">主发布人</span>
-                      <strong className="text-sm font-medium text-slate-800 block mt-1">{selectedKb.creator}</strong>
-                    </div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                      <span className="text-sm font-medium text-slate-400 block">订阅受领</span>
-                      <strong className="text-sm font-medium text-slate-800 block mt-1">{selectedKb.subs} 挂领</strong>
-                    </div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                      <span className="text-sm font-medium text-slate-400 block">实体文档</span>
-                      <strong className="text-sm font-medium text-slate-800 block mt-1">{selectedKb.docs} 份标准件</strong>
-                    </div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                      <span className="text-sm font-medium text-slate-400 block">待申核件</span>
-                      <strong className={cn("text-sm font-medium block mt-1", selectedKb.pendingApprovals.length > 0 ? "text-amber-600" : "text-slate-800")}>
-                        {selectedKb.pendingApprovals.length} 份申请
-                      </strong>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Direct workbench transfer */}
+        <KnowledgeBaseConsoleLayout
+          activeTab={consoleTab}
+          onTabChange={(tab) => onConsoleTabChange?.(tab)}
+          onCreate={() => setViewMode("create")}
+          createLabel="新建"
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchPlaceholder="搜索公共库..."
+          galleryToolbar={
+            <div className="hidden lg:flex items-center gap-1 overflow-x-auto max-w-[320px]">
+              {["全部", "方案 / 策划", "制度 / 规范", "素材 / 课件", "项目 / 复盘"].map((cat) => (
                 <button
-                  onClick={() => handleTogglePin(selectedKb.id, !!selectedKb.isPinned)}
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategoryFilter(cat)}
                   className={cn(
-                    "w-full py-2.5 border rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 transition",
-                    selectedKb.isPinned
-                      ? "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
-                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                    "px-2 py-1 text-xs font-medium rounded-lg whitespace-nowrap transition",
+                    categoryFilter === cat
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
                   )}
                 >
-                  {selectedKb.isPinned ? '取消发现精选置顶' : '置顶至发现精选'}
+                  {cat}
                 </button>
-                <button 
-                  onClick={() => { setViewMode("workbench"); setWorkbenchMode("manage"); }}
-                  className="w-full py-2.5 bg-blue-600 border border-blue-600 rounded-xl text-white font-medium text-sm flex items-center justify-center gap-1.5 shadow-md shadow-blue-100 hover:bg-blue-700 transition"
-                >
-                  进入该公共知识库工作台 ➔
-                </button>
-              </div>
+              ))}
             </div>
-          </div>
-        </div>
+          }
+          galleryItems={filteredKbs.map((kb) => ({
+            id: kb.id,
+            name: kb.name,
+            desc: kb.desc,
+            status: kb.status,
+            statusTone: kb.statusTone,
+            isArchived: kb.status === "已归档",
+          }))}
+          selectedId={selectedKbId}
+          onSelect={setSelectedKbId}
+          onEnterKb={(id) => {
+            const kb = publicKbs.find((k) => k.id === id);
+            if (kb?.status === "已归档") {
+              showToast("该知识库已归档，不可进入或执行操作");
+              return;
+            }
+            setSelectedKbId(id);
+            setDetailFileId(undefined);
+            setViewMode("workbench");
+            setWorkbenchMode("detail");
+          }}
+          selectedTitle={selectedKb.name}
+          selectedDesc={selectedKb.desc}
+          selectedStatus={selectedKb.status}
+          selectedStatusTone={selectedKb.statusTone}
+          metrics={{
+            docCount: selectedKb.files,
+            authorizedCount: selectedKb.subs,
+            authorizedLabel: "订阅人员",
+            recentUpdates: activePublishedCount,
+            anomalyTasks: selectedKb.pendingApprovals?.length ?? 0,
+          }}
+          detailContent={
+            <div className="space-y-4">
+              <OverviewSectionTitle>库内详情</OverviewSectionTitle>
+              <div className="grid grid-cols-2 gap-3">
+                <OverviewInfoCard label="发布主体" themeIndex={0}>
+                  @{selectedKb.owner}
+                </OverviewInfoCard>
+                <OverviewInfoCard label="资料分类" themeIndex={1}>
+                  {selectedKb.category}
+                </OverviewInfoCard>
+                <OverviewInfoCard label="主发布人" themeIndex={2}>
+                  {selectedKb.creator}
+                </OverviewInfoCard>
+                <OverviewInfoCard label="最近更新" themeIndex={3}>
+                  {selectedKb.updatedAt}
+                </OverviewInfoCard>
+              </div>
+
+              {selectedKb.tags?.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedKb.tags.map((t) => (
+                    <span
+                      key={t}
+                      className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-md border border-slate-200/60"
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {selectedKb.pendingApprovals?.length > 0 && !selectedKbArchived && (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-amber-600">待审核呈报 ({selectedKb.pendingApprovals.length})</div>
+                  {selectedKb.pendingApprovals.slice(0, 3).map((app, idx) => (
+                    <OverviewDetailCard
+                      key={app.id}
+                      title={app.title}
+                      description={`${app.department} · ${app.applicant} · ${app.time}`}
+                      themeIndex={idx}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {getPublicationViewDocuments(selectedKb.documents).length > 0 && (
+                <div className="space-y-2">
+                  <OverviewSectionTitle className="text-xs font-medium text-slate-500">
+                    文件发布情况
+                  </OverviewSectionTitle>
+                  <div className="grid grid-cols-2 gap-2">
+                    <OverviewInfoCard label="已发布" themeIndex={0}>
+                      {selectedKb.documents.filter((d) => d.publicationStatus === "published").length} 份
+                    </OverviewInfoCard>
+                    <OverviewInfoCard label="已下线" themeIndex={1}>
+                      {selectedKb.documents.filter((d) => d.publicationStatus === "offline").length} 份
+                    </OverviewInfoCard>
+                  </div>
+                  {selectedKb.documents
+                    .filter((d) => d.publicationStatus === "published" && d.requiredReading && d.readStats?.total)
+                    .slice(0, 2)
+                    .map((doc, idx) => {
+                      const percent = Math.round((doc.readStats!.read / doc.readStats!.total!) * 100);
+                      return (
+                        <OverviewDetailCard
+                          key={doc.id}
+                          title={doc.name}
+                          description={`必读 · 已读 ${percent}%（${doc.readStats!.read}/${doc.readStats!.total}）`}
+                          themeIndex={idx + 2}
+                        />
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          }
+          panelFooter={
+            selectedKbArchived ? (
+              <button
+                type="button"
+                disabled
+                className="w-full py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-400 font-medium text-sm cursor-not-allowed select-none"
+              >
+                已归档，不可操作
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("workbench");
+                  setWorkbenchMode("manage");
+                }}
+                className="w-full py-2.5 bg-blue-600 border border-blue-600 rounded-xl text-white font-medium text-sm hover:bg-blue-700 transition shadow-md shadow-blue-100"
+              >
+                进入工作台
+              </button>
+            )
+          }
+          emptyGalleryMessage="没有找到匹配的公共知识库"
+        />
       ) : (
         /* WORKBENCH & REVIEW CENTER MODE */
         <div className="p-6 md:p-8 w-full max-w-[1440px] mx-auto h-full flex flex-col">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden h-full relative text-left">
+          <div className="glass-panel rounded-2xl flex flex-col overflow-hidden h-full relative text-left">
+            {selectedKbArchived && (
+              <div className="shrink-0 px-5 py-3 bg-amber-50/80 border-b border-amber-200/50 flex items-center gap-2 text-sm text-amber-900 backdrop-blur-sm">
+                <FileArchive className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>该知识库已归档，当前为<strong className="font-medium mx-1">只读查阅</strong>模式，不可上传、发布、审核或变更配置。</span>
+              </div>
+            )}
             
             {/* Workbench Header */}
-            <div className="px-6 py-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0 bg-slate-50/50">
+            <div className="px-6 py-5 border-b border-white/40 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0 glass-header">
                <div className="flex items-center gap-3">
                  <button 
                    onClick={() => setViewMode('list')} 
-                   className="w-9 h-9 flex items-center justify-center border border-slate-200 bg-white rounded-xl hover:bg-slate-50 transition shadow-2xs"
+                   className="w-9 h-9 flex items-center justify-center glass-card rounded-xl hover:bg-white/50 transition"
                  >
                    <ArrowLeft className="w-4 h-4 text-slate-600" />
                  </button>
@@ -867,21 +1269,24 @@ export function PublicKnowledgeBaseView() {
                  <div>
                    <h3 className="text-base font-medium text-slate-900 flex items-center gap-1">
                      {selectedKb.name}
-                     <span className="px-2 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 text-[9px] font-medium rounded-full select-none">公共受控库</span>
+                     <span className="px-2 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 text-[9px] font-medium rounded-full select-none">公共知识库</span>
                    </h3>
                    <p className="text-sm text-slate-500 mt-1 line-clamp-1">{selectedKb.desc}</p>
                  </div>
                </div>
                
                 {/* Tab toggling tools */}
-                <div className="flex items-center gap-1 bg-slate-150 p-1 rounded-xl shrink-0">
+                <div className="flex items-center gap-1 glass-card p-1 rounded-xl shrink-0">
                   <button
-                    onClick={() => setWorkbenchMode("detail")}
+                    onClick={() => {
+                      setDetailFileId(undefined);
+                      setWorkbenchMode("detail");
+                    }}
                     className={cn(
                       "px-4 py-1.5 rounded-lg text-sm font-medium transition border-0",
                       workbenchMode === "detail" 
-                        ? "bg-white text-slate-900 shadow-xs ring-1 ring-slate-200/50" 
-                        : "text-slate-500 hover:text-slate-800"
+                        ? "glass-card-active text-slate-900" 
+                        : "text-slate-500 hover:text-slate-800 hover:bg-white/30"
                     )}
                   >
                     文件视图
@@ -891,8 +1296,8 @@ export function PublicKnowledgeBaseView() {
                     className={cn(
                       "px-4 py-1.5 rounded-lg text-sm font-medium transition border-0",
                       workbenchMode === "manage" 
-                        ? "bg-white text-slate-900 shadow-xs ring-1 ring-slate-200/50" 
-                        : "text-slate-500 hover:text-slate-800"
+                        ? "glass-card-active text-slate-900" 
+                        : "text-slate-500 hover:text-slate-800 hover:bg-white/30"
                     )}
                   >
                     管理工作台 {selectedKb.pendingApprovals.length > 0 && <span className={cn("ml-1 px-1 rounded-full text-[9px]", workbenchMode === "manage" ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-600")}>{selectedKb.pendingApprovals.length}</span>}
@@ -906,7 +1311,7 @@ export function PublicKnowledgeBaseView() {
                 
                 {workbenchMode === "detail" ? (
                   <motion.div 
-                    key="detail"
+                    key={`detail-${selectedKbId}-${detailFileId ?? "list"}`}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -917,31 +1322,28 @@ export function PublicKnowledgeBaseView() {
                       kbName={selectedKb.name}
                       kbType="public"
                       initialRole="admin"
+                      isArchiveView={selectedKbArchived}
                       onBack={() => setViewMode('list')}
-                      initialNodes={[
-                        { id: 'root', parentId: null, name: '全部文件', type: 'folder', updatedAt: '2026-06-11T11:24:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '系统' },
-                        { id: 'f1', parentId: 'root', name: '公开标准件', type: 'folder', updatedAt: '2026-06-11T11:24:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: 'admin' },
-                        { id: 'file1', parentId: 'f1', name: '网点服务标准手册 2026 版.pdf', type: 'document', format: 'pdf', size: 12.4 * 1024 * 1024, updatedAt: '2026-06-08T10:00:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '张敏' },
-                        { id: 'file2', parentId: 'f1', name: '高风险投诉应急话术.docx', type: 'document', format: 'docx', size: 4.1 * 1024 * 1024, updatedAt: '2026-06-10T15:00:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '刘洋' },
-                        { id: 'file3', parentId: 'f1', name: '厅堂排队冲突解决指引方案.pptx', type: 'document', format: 'pptx', size: 18.2 * 1024 * 1024, updatedAt: '2026-06-09T09:00:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '陈宁' }
-                      ]}
+                      initialNodes={publicKbNodes}
+                      initialFileId={detailFileId}
                       hideHeader
+                      onNodesChange={selectedKbArchived ? undefined : handlePublicKbNodesChange}
                     />
                   </motion.div>
                 ) : (
                   <div className="p-6 h-full overflow-auto">
                     {/* Management Sub Tabs */}
-                    <div className="flex items-center gap-6 border-b border-slate-100 mb-6 pb-2">
-                       {['approvals', 'documents', 'security', 'history'].map(tab => (
+                    <div className="flex items-center gap-6 border-b border-white/40 mb-6 pb-2">
+                       {['approvals', 'publications', 'security', 'history'].map(tab => (
                          <button 
                             key={tab}
-                            onClick={() => setWorkbenchTab(tab as any)}
+                            onClick={() => setWorkbenchTab(tab as typeof workbenchTab)}
                             className={cn(
                               "pb-2 text-sm font-medium transition-all relative",
                               workbenchTab === tab ? "text-blue-600" : "text-slate-400 hover:text-slate-600"
                             )}
                          >
-                           {tab === 'approvals' ? '审核大厅' : tab === 'documents' ? '已发布文档' : tab === 'security' ? '配置管理' : '操作历史'}
+                           {tab === 'approvals' ? '审核大厅' : tab === 'publications' ? '文件发布情况' : tab === 'security' ? '配置管理' : '操作历史'}
                            {tab === 'approvals' && selectedKb.pendingApprovals.length > 0 && (
                              <span className="ml-1.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-sm rounded-full">{selectedKb.pendingApprovals.length}</span>
                            )}
@@ -970,7 +1372,7 @@ export function PublicKnowledgeBaseView() {
                         {selectedKb.pendingApprovals.map((app) => (
                           <div 
                             key={app.id} 
-                            className="p-3 border border-slate-200 hover:border-blue-200 hover:shadow-xs rounded-xl bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition"
+                            className="p-3 border border-white/50 hover:border-blue-200/60 hover:shadow-xs rounded-xl glass-card flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition"
                           >
                             <div className="flex items-start gap-3.5">
                               <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-700 shrink-0">
@@ -1009,39 +1411,173 @@ export function PublicKnowledgeBaseView() {
                   </motion.div>
                 )}
 
-                  {workbenchTab === 'documents' && (
+                  {workbenchTab === 'publications' && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="space-y-3"
+                      className="space-y-4"
                     >
-                      {selectedKb.documents.length === 0 ? (
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-sm text-slate-500">
+                          查看文件发布后的阅读反馈与下载情况，已归档文件不在此展示。
+                        </p>
+                        <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
+                          {(
+                            [
+                              { id: "all" as const, label: "全部" },
+                              { id: "published" as const, label: "已发布" },
+                              { id: "offline" as const, label: "已下线" },
+                            ] as const
+                          ).map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => setPublicationStatusFilter(item.id)}
+                              className={cn(
+                                "px-3 py-1.5 rounded-lg text-sm font-medium transition",
+                                publicationStatusFilter === item.id
+                                  ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/60"
+                                  : "text-slate-500 hover:text-slate-800"
+                              )}
+                            >
+                              {item.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {publicationDocs.length === 0 ? (
                         <div className="border border-dashed border-slate-200 bg-slate-50/50 rounded-2xl p-16 text-center">
-                          <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                          <p className="text-sm font-medium text-slate-500">暂无已发布文档</p>
+                          <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                          <p className="text-sm font-medium text-slate-500">暂无符合条件的发布记录</p>
                         </div>
                       ) : (
-                        selectedKb.documents.map((doc) => (
-                          <div key={doc.id} className="p-4 border border-slate-200 rounded-xl bg-white flex items-center justify-between gap-3">
-                            <div className="flex items-start gap-3 min-w-0">
-                              <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 shrink-0">
-                                <FileText className="w-5 h-5" />
+                        publicationDocs.map((doc) => {
+                          const readTotal = doc.readStats?.total;
+                          const readCount = doc.readStats?.read ?? 0;
+                          const readPercent =
+                            doc.requiredReading && readTotal
+                              ? Math.round((readCount / readTotal) * 100)
+                              : null;
+                          const unreadCount =
+                            doc.requiredReading && readTotal ? readTotal - readCount : 0;
+
+                          return (
+                            <div
+                              key={doc.id}
+                              className="p-5 border border-white/50 rounded-2xl glass-card space-y-4"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                                    <h4 className="font-medium text-slate-900 text-sm leading-snug">{doc.name}</h4>
+                                    <span
+                                      className={cn(
+                                        "px-2 py-0.5 text-[11px] font-medium rounded-full border",
+                                        doc.publicationStatus === "published"
+                                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                          : "bg-slate-100 text-slate-600 border-slate-200"
+                                      )}
+                                    >
+                                      {doc.publicationStatus === "published" ? "已发布" : "已下线"}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                                    <span className="px-2 py-0.5 bg-slate-100 rounded">{doc.category}</span>
+                                    <span>发布：{doc.publishedAt}</span>
+                                    <span>发布人：{doc.editor}</span>
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                                  {doc.requiredReading ? (
+                                    <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                                      必读
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-slate-50 text-slate-500 border border-slate-200">
+                                      非必读
+                                    </span>
+                                  )}
+                                  {doc.downloadable ? (
+                                    <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                      可下载
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-slate-50 text-slate-500 border border-slate-200">
+                                      不可下载
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="min-w-0">
-                                <h4 className="font-medium text-slate-900 text-sm truncate">{doc.name}</h4>
-                                <div className="flex flex-wrap gap-2 mt-1.5 text-xs text-slate-500">
-                                  <span className="px-2 py-0.5 bg-slate-100 rounded">{doc.category}</span>
-                                  <span>{doc.size}</span>
-                                  <span>编辑：{doc.editor}</span>
-                                  <span>{doc.time}</span>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <Eye className="w-4 h-4 text-violet-600" />
+                                    <span className="text-sm font-medium text-slate-800">已读情况</span>
+                                  </div>
+                                  {doc.requiredReading ? (
+                                    <>
+                                      <div className="flex items-end justify-between gap-2 mb-2">
+                                        <span className="text-2xl font-semibold text-slate-900 tabular-nums">
+                                          {readPercent}%
+                                        </span>
+                                        <span className="text-xs text-slate-500">
+                                          {readCount} / {readTotal} 人已读
+                                        </span>
+                                      </div>
+                                      <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+                                        <div
+                                          className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all"
+                                          style={{ width: `${readPercent}%` }}
+                                        />
+                                      </div>
+                                      {doc.publicationStatus === "published" && unreadCount > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleResendReadingReminder(doc)}
+                                          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition"
+                                        >
+                                          <Bell className="w-3.5 h-3.5" />
+                                          再次下发提示（{unreadCount} 人未读）
+                                        </button>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div className="text-2xl font-semibold text-slate-900 tabular-nums mb-1">
+                                        {readCount.toLocaleString()}
+                                      </div>
+                                      <p className="text-xs text-slate-500">累计已读次数</p>
+                                    </>
+                                  )}
+                                </div>
+
+                                <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <Download className="w-4 h-4 text-blue-600" />
+                                    <span className="text-sm font-medium text-slate-800">下载情况</span>
+                                  </div>
+                                  {doc.downloadable ? (
+                                    <>
+                                      <div className="text-2xl font-semibold text-slate-900 tabular-nums mb-1">
+                                        {doc.downloadStats.downloads}
+                                      </div>
+                                      <p className="text-xs text-slate-500">
+                                        累计下载次数
+                                        {doc.downloadStats.totalEligible > 0 && (
+                                          <> · 可下载范围 {doc.downloadStats.totalEligible} 人</>
+                                        )}
+                                      </p>
+                                    </>
+                                  ) : (
+                                    <p className="text-sm text-slate-500">发布时设置为不可下载，不开放下载统计</p>
+                                  )}
                                 </div>
                               </div>
                             </div>
-                            <button className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 shrink-0">
-                              查看
-                            </button>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </motion.div>
                   )}
@@ -1385,16 +1921,59 @@ export function PublicKnowledgeBaseView() {
                         </div>
                       </section>
 
+                      {/* Section 5: Lifecycle */}
+                      <section className="space-y-4">
+                        <div className="flex items-center gap-1 pb-2 border-b border-slate-100">
+                          <FileArchive className="w-4 h-4 text-blue-600" />
+                          <h3 className="text-sm font-medium text-slate-900">知识库生命周期</h3>
+                        </div>
+                        {selectedKbArchived ? (
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-3">
+                            <FileArchive className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
+                            <div>
+                              <div className="text-sm font-medium text-slate-800">该公共知识库已归档</div>
+                              <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                                归档时间：{selectedKb.updatedAt}。库内内容只读留存，不可再上传、发布、审核或修改配置。
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-4 border border-rose-100 bg-rose-50/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-slate-900">归档整个知识库</div>
+                              <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                                归档后该公共知识库将变为「已归档」状态，停止一切写入与配置变更，仅保留只读查阅能力。
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowArchiveKbConfirm(true)}
+                              className="shrink-0 px-4 py-2 border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 text-sm font-medium rounded-xl transition shadow-sm"
+                            >
+                              归档知识库
+                            </button>
+                          </div>
+                        )}
+                      </section>
+
                       {/* Footer Actions */}
                       <footer className="pt-8 border-t border-slate-100 flex items-center justify-between">
                         <div className="text-sm font-medium text-slate-400 italic">
-                          注意：上述配置保存后将立即对该公共知识库生效，系统将自动核算存量数据是否需补填配置。
+                          {selectedKbArchived
+                            ? "该知识库已归档，配置项不可再修改。"
+                            : "注意：上述配置保存后将立即对该公共知识库生效，系统将自动核算存量数据是否需补填配置。"}
                         </div>
                         <div className="flex items-center gap-3">
-                           <button className="px-6 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition">重置</button>
+                           <button
+                            disabled={selectedKbArchived}
+                            className="px-6 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                           >
+                            重置
+                           </button>
                            <button 
+                            disabled={selectedKbArchived}
                             onClick={() => showToast('配置已持久化保存至中心数据库')}
-                            className="px-10 py-2.5 bg-blue-600 text-white font-medium text-sm rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition"
+                            className="px-10 py-2.5 bg-blue-600 text-white font-medium text-sm rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
                            >
                               保存配置变更
                            </button>
@@ -1410,6 +1989,55 @@ export function PublicKnowledgeBaseView() {
           </div>
         </div>
       )}
+
+      {/* Archive KB Confirm Modal */}
+      <AnimatePresence>
+        {showArchiveKbConfirm && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[90] bg-slate-900/40 backdrop-blur-sm"
+              onClick={() => setShowArchiveKbConfirm(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              className="fixed left-1/2 top-1/2 z-[91] w-[min(440px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-2xl border border-slate-200 p-6"
+            >
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                  <FileArchive className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-medium text-slate-900">确认归档公共知识库？</h3>
+                  <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                    归档「{selectedKb.name}」后，该库将变为只读留存状态，不可再上传、发布、审核或修改配置。此操作不可撤销。
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowArchiveKbConfirm(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleArchivePublicKb}
+                  className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition border-0 cursor-pointer"
+                >
+                  确认归档
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Member Selector Modal */}
       <MemberSelectorModal 

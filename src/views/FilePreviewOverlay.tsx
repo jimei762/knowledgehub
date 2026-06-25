@@ -45,9 +45,9 @@ export function FilePreviewOverlay({ file, onBack }: FilePreviewOverlayProps) {
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 z-20 absolute inset-0">
+    <div className="flex-1 flex flex-col h-full z-20 absolute inset-0">
       {/* Header */}
-      <header className="h-14 px-6 flex items-center justify-between border-b border-slate-200 bg-white shrink-0 shadow-sm relative z-30">
+      <header className="h-14 px-6 flex items-center justify-between glass-header shrink-0 relative z-30">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors">
             <ArrowLeft className="w-5 h-5" />

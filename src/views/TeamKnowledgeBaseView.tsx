@@ -1,70 +1,47 @@
-import { useState, useEffect, useMemo } from "react";
-import { Check, Database, Users, ShieldAlert, FileText, Settings, Plus, Search, ChevronRight, BarChart3, Clock, Lock, Bell, Download, MonitorPlay, X, ArrowLeft, MoreHorizontal, FileArchive, CheckCircle2, HelpCircle, ExternalLink, Crown, Sparkles, Eye, Trash2, Upload, Globe, ShieldCheck, AlertCircle, UserPlus, ChevronDown, Folder, ListChecks, Pencil } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Check, Database, Users, ShieldAlert, FileText, Settings, Plus, Search, ChevronRight, BarChart3, Clock, Lock, Bell, Download, MonitorPlay, X, ArrowLeft, MoreHorizontal, FileArchive, CheckCircle2, HelpCircle, ExternalLink, Crown, Sparkles, Eye, Trash2, Upload, Globe, ShieldCheck, Shield, AlertCircle, UserPlus, ChevronDown, Folder, ListChecks, Pencil } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { KnowledgeBaseDetail } from "./KnowledgeBaseDetail";
 import { MemberSelectorModal } from "../components/MemberSelectorModal";
 import { UploadWithSpecModal } from "../components/UploadWithSpecModal";
 import { buildPresetSpec } from "../components/CollectionSpecConfig";
-import { CollectionSpec, MetadataField, MaterialTypeRule, UploadFileItem, FileListDisplayConfig } from "../types";
+import { KnowledgeBaseConsoleLayout, type KbConsoleTab } from "../components/knowledge-base/KnowledgeBaseConsoleLayout";
+import { OverviewDetailCard, OverviewInfoCard, OverviewSectionTitle } from "../components/knowledge-base/OverviewCards";
+import { CollectionSpec, MetadataField, MaterialTypeRule } from "../types";
 import type { FileNode } from "./KnowledgeBaseDetail";
+import {
+  PERMISSION_OPTIONS,
+  getPermissionDesc,
+  type TeamMemberPerm,
+} from "../lib/teamPermissions";
+import {
+  DEFAULT_TEAM_KB_NODES,
+  buildTeamKbFileListDisplayConfig,
+  createFileNodeFromUpload,
+  getTeamKbEnabledSpec,
+  TEAM_KB_SPEC_ENABLED_IDS,
+} from "../lib/teamKbMock";
 
-const DEFAULT_TEAM_KB_NODES: Record<string, FileNode[]> = {
-  kb_credit: [
-    { id: 'root', parentId: null, name: '全部文件', type: 'folder', updatedAt: '2026-06-11T10:12:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '系统' },
-    { id: 'f1', parentId: 'root', name: '授信资料', type: 'folder', updatedAt: '2026-06-11T10:12:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '张敏' },
-    { id: 'f2', parentId: 'root', name: '客户经理培训', type: 'folder', updatedAt: '2026-06-10T18:02:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '刘洋' },
-    { id: 'f3', parentId: 'root', name: '历史项目复盘', type: 'folder', updatedAt: '2026-06-09T14:18:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '陈宁' },
-    { id: 'file1', parentId: 'f1', name: '授信资料补录指引.pdf', type: 'document', format: 'pdf', size: 3.42 * 1024 * 1024, updatedAt: '2026-06-11T09:40:00Z', governanceStatus: 'pending', preprocessStatus: 'pending', creator: '刘洋' },
-    { id: 'file2', parentId: 'f2', name: '客户经理培训课件.pptx', type: 'document', format: 'pptx', size: 18.6 * 1024 * 1024, updatedAt: '2026-06-02T10:00:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '张敏' },
-  ],
-  kb_retail: [
-    { id: 'root', parentId: null, name: '全部文件', type: 'folder', updatedAt: '2026-06-11T10:12:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '系统' },
-  ],
-  kb_policy: [
-    { id: 'root', parentId: null, name: '全部文件', type: 'folder', updatedAt: '2026-06-11T10:12:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '系统' },
-  ],
-};
-
-function buildFileListDisplayConfig(
-  spec: CollectionSpec | null,
-  enabled: boolean
-): FileListDisplayConfig | undefined {
-  if (!enabled || !spec) return undefined;
-  return {
-    showMaterialType: true,
-    showFileTags: true,
-    metadataFields: spec.metadataFields,
-  };
+interface TeamKnowledgeBaseViewProps {
+  consoleTab?: KbConsoleTab;
+  onConsoleTabChange?: (tab: KbConsoleTab) => void;
+  isKbAdmin?: boolean;
 }
 
-function createFileNodeFromUpload(
-  item: UploadFileItem,
-  batchMetadata: Record<string, string>,
-  parentId = 'root'
-): FileNode {
-  const ext = item.fileName.split('.').pop()?.toLowerCase() || '';
-  let type: FileNode['type'] = 'document';
-  if (['xlsx', 'xls'].includes(ext)) type = 'spreadsheet';
-  else if (['ppt', 'pptx'].includes(ext)) type = 'presentation';
-  else if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) type = 'image';
-  else if (['zip', 'rar'].includes(ext)) type = 'archive';
+const WATERMARK_VAR_OPTIONS = [
+  { key: "username", label: "用户名", token: "{用户名}" },
+  { key: "employeeId", label: "工号", token: "{工号}" },
+  { key: "accessTime", label: "访问时间", token: "{访问时间}" },
+  { key: "kbName", label: "知识库名称", token: "{知识库名称}" },
+] as const;
 
-  return {
-    id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    parentId,
-    name: item.fileName,
-    type,
-    format: ext,
-    size: item.file.size,
-    updatedAt: new Date().toISOString(),
-    governanceStatus: 'pending',
-    preprocessStatus: 'pending',
-    creator: '当前用户',
-    materialType: item.materialType || undefined,
-    fileTags: item.fileTags?.length ? item.fileTags : undefined,
-    fileMetadata: { ...batchMetadata, ...item.fieldValues },
-  };
+type WatermarkVarKey = (typeof WATERMARK_VAR_OPTIONS)[number]["key"];
+
+function buildWatermarkTemplate(selected: WatermarkVarKey[]) {
+  return WATERMARK_VAR_OPTIONS.filter((o) => selected.includes(o.key))
+    .map((o) => o.token)
+    .join(" · ");
 }
 
 const mockTeamKbs = [
@@ -76,6 +53,8 @@ const mockTeamKbs = [
     scope: "知识库成员 + 指定协作人",
     members: 36,
     files: 842,
+    recentUpdates: 15,
+    anomalyTasks: 2,
     status: "运行中",
     statusTone: "success",
     updatedAt: "今日 10:12",
@@ -85,9 +64,9 @@ const mockTeamKbs = [
     tags: ["成员授权", "授信资料", "文档设置"],
     policies: [
       { label: "文件治理", value: "1 份待人工确认，1 份已治理并写入 MinIO。" },
-      { label: "文档设置", value: "文档水印已开启，加密保护和默认多人编辑未开启。" },
+      { label: "文档设置", value: "文档水印已开启、导出控制未开启。" },
       { label: "团队文档模板", value: "暂未上传团队模板，可从本地或我的知识库上传。" },
-      { label: "资料上传规范", value: "已启用「项目交付资料上传」规范，上传时需填写元数据并校验。" },
+      { label: "资料上传规范", value: "已启用资料上传规范。" },
       { label: "归档状态", value: "未归档，可继续新增、导入和维护源文件。" }
     ]
   },
@@ -99,8 +78,10 @@ const mockTeamKbs = [
     scope: "零售运营组 + 网点运营岗",
     members: 52,
     files: 516,
-    status: "治理中",
-    statusTone: "warning",
+    recentUpdates: 8,
+    anomalyTasks: 5,
+    status: "运行中",
+    statusTone: "success",
     updatedAt: "今日 08:45",
     creator: "林珊",
     folders: 3,
@@ -110,7 +91,7 @@ const mockTeamKbs = [
       { label: "文件治理", value: "3 份治理中，2 份待人工确认，已入库文件可检索复用。" },
       { label: "文档设置", value: "文档水印已开启，下载需要负责人确认。" },
       { label: "团队文档模板", value: "已维护活动方案、复盘报告 2 个团队模板。" },
-      { label: "归档状态", value: "未归档，仍有 2 条治理提醒待处理。" }
+      { label: "归档状态", value: "未归档，可继续新增、导入和维护源文件。" }
     ]
   },
   {
@@ -121,54 +102,277 @@ const mockTeamKbs = [
     scope: "制度修订小组",
     members: 18,
     files: 238,
-    status: "归档准备",
-    statusTone: "info",
-    updatedAt: "昨日 18:02",
+    recentUpdates: 0,
+    anomalyTasks: 0,
+    status: "已归档",
+    statusTone: "archived",
+    updatedAt: "2026-05-30 归档",
     creator: "周维",
-    folders: 2,
-    docs: 3,
+    folders: 3,
+    docs: 8,
     tags: ["制度修订", "版本对照", "审批口径"],
     policies: [
-      { label: "文件治理", value: "归档前仍有 3 项完整性检查待确认。" },
+      { label: "文件治理", value: "归档前治理已全部完成，内容只读留存。" },
       { label: "文档设置", value: "文档水印已开启，过程稿不允许下载。" },
       { label: "团队文档模板", value: "已维护制度修订说明、审批记录 2 个团队模板。" },
-      { label: "归档状态", value: "归档准备中，仍有 3 项完整性检查待确认。" }
+      { label: "归档状态", value: "已于 2026-05-30 完成归档，不可再执行任何操作。" }
     ]
   }
 ];
 
-const PERMISSION_OPTIONS = [
-  { value: '仅查看', label: '仅查看', desc: '查看' },
-  { value: '可查看', label: '可查看', desc: '查看，复制内容，打印，下载' },
-  { value: '可评论', label: '可评论', desc: '查看，复制内容，打印，下载，评论' },
-  { value: '可编辑', label: '可编辑', desc: '查看，复制内容，打印，上传，下载，评论，编辑，分享' },
-  { value: '可管理', label: '可管理', desc: '拥有文件(夹)所有权限' }
+interface OrgNode {
+  id: string;
+  name: string;
+  children?: OrgNode[];
+}
+
+/** 当前登录用户所在组织（mock） */
+const CURRENT_USER_ORG_ID = "org_hq_digital_ops";
+
+const ORG_TREE: OrgNode[] = [
+  {
+    id: "org_hq",
+    name: "总行",
+    children: [
+      {
+        id: "org_hq_digital",
+        name: "数字化发展部",
+        children: [
+          { id: "org_hq_digital_ops", name: "数字化运营部" },
+          { id: "org_hq_digital_product", name: "数字化产品组" },
+        ],
+      },
+      {
+        id: "org_hq_ops",
+        name: "运营管理部",
+        children: [
+          { id: "org_hq_ops_center", name: "运营服务中心" },
+          { id: "org_hq_ops_policy", name: "制度管理室" },
+        ],
+      },
+      { id: "org_hq_credit", name: "信贷风控中心" },
+      { id: "org_hq_retail", name: "零售金融部" },
+    ],
+  },
+  {
+    id: "org_east",
+    name: "华东分行",
+    children: [
+      { id: "org_east_ops", name: "华东分行运营组" },
+      { id: "org_east_credit", name: "华东分行信贷运营组" },
+      { id: "org_east_retail", name: "华东分行零售运营组" },
+    ],
+  },
+  {
+    id: "org_south",
+    name: "华南分行",
+    children: [
+      { id: "org_south_ops", name: "华南分行运营组" },
+      { id: "org_south_service", name: "华南分行客户服务部" },
+    ],
+  },
 ];
 
-export function TeamKnowledgeBaseView() {
+function findOrgById(nodes: OrgNode[], id: string): OrgNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    if (node.children) {
+      const found = findOrgById(node.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function flattenOrgTree(nodes: OrgNode[], depth = 0): Array<{ id: string; name: string; depth: number }> {
+  return nodes.flatMap((node) => [
+    { id: node.id, name: node.name, depth },
+    ...(node.children ? flattenOrgTree(node.children, depth + 1) : []),
+  ]);
+}
+
+function collectOrgSubtree(node: OrgNode, depth = 0): Array<{ id: string; name: string; depth: number }> {
+  return [
+    { id: node.id, name: node.name, depth },
+    ...(node.children?.flatMap((child) => collectOrgSubtree(child, depth + 1)) ?? []),
+  ];
+}
+
+function getOrgName(orgId: string) {
+  return findOrgById(ORG_TREE, orgId)?.name ?? "";
+}
+
+function getSelectableOrgs(isAdmin: boolean, userOrgId: string) {
+  if (isAdmin) {
+    return flattenOrgTree(ORG_TREE);
+  }
+  const userOrg = findOrgById(ORG_TREE, userOrgId);
+  return userOrg ? collectOrgSubtree(userOrg) : [];
+}
+
+function createInitialKbData() {
+  return {
+    name: "",
+    desc: "",
+    organizationId: CURRENT_USER_ORG_ID,
+    organizationName: getOrgName(CURRENT_USER_ORG_ID),
+    scope: "restricted" as const,
+    autoWatermark: true,
+    autoEncrypt: false,
+  };
+}
+
+interface OrgOption {
+  id: string;
+  name: string;
+  depth: number;
+}
+
+function OrgSearchSelect({
+  options,
+  valueId,
+  onChange,
+  placeholder = "搜索并选择所属组织...",
+}: {
+  options: OrgOption[];
+  valueId: string;
+  onChange: (id: string, name: string) => void;
+  placeholder?: string;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const selected = options.find((item) => item.id === valueId);
+
+  const filteredOptions = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    if (!keyword) return options;
+    return options.filter((item) => item.name.toLowerCase().includes(keyword));
+  }, [options, query]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSelect = (org: OrgOption) => {
+    onChange(org.id, org.name);
+    setOpen(false);
+    setQuery("");
+  };
+
+  return (
+    <div ref={rootRef} className="relative">
+      <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 z-10 pointer-events-none" />
+      <input
+        type="text"
+        value={open ? query : selected?.name ?? ""}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+        }}
+        placeholder={placeholder}
+        className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium text-sm focus:ring-2 focus:ring-blue-200 focus:bg-white focus:border-blue-300 outline-none transition-all"
+      />
+      <button
+        type="button"
+        onClick={() => {
+          setOpen((prev) => !prev);
+          if (!open) setQuery("");
+        }}
+        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
+        aria-label="展开组织列表"
+      >
+        <ChevronDown className={cn("w-4 h-4 transition-transform", open && "rotate-180")} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15 }}
+            className="absolute z-30 mt-1.5 w-full max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg py-1"
+          >
+            {filteredOptions.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-slate-400">未找到匹配组织</div>
+            ) : (
+              filteredOptions.map((org) => (
+                <button
+                  key={org.id}
+                  type="button"
+                  onClick={() => handleSelect(org)}
+                  className={cn(
+                    "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2",
+                    org.id === valueId
+                      ? "bg-blue-50 text-blue-700 font-medium"
+                      : "text-slate-700 hover:bg-slate-50"
+                  )}
+                  style={{ paddingLeft: `${16 + org.depth * 16}px` }}
+                >
+                  {org.depth > 0 && <span className="text-slate-300 shrink-0">└</span>}
+                  <span className="truncate">{org.name}</span>
+                  {org.id === valueId && <Check className="w-3.5 h-3.5 ml-auto shrink-0 text-blue-600" />}
+                </button>
+              ))
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+
+export function TeamKnowledgeBaseView({ consoleTab = "team", onConsoleTabChange, isKbAdmin = true }: TeamKnowledgeBaseViewProps = {}) {
   const [selectedKbId, setSelectedKbId] = useState("kb_credit");
   const [activeTab, setActiveTab] = useState<"team" | "personal">("team");
   const [viewMode, setViewMode] = useState<"list" | "workbench" | "create">("list");
   const [teamSearchQuery, setTeamSearchQuery] = useState("");
-  const [drawerOpen, setDrawerOpen] = useState<"members" | "settings" | "status" | null>(null);
+  const [workbenchMode, setWorkbenchMode] = useState<"detail" | "manage">("detail");
+  const [workbenchTab, setWorkbenchTab] = useState<"members" | "settings" | "status">("members");
   const [showMemberSelector, setShowMemberSelector] = useState(false);
   const [memberSelectorContext, setMemberSelectorContext] = useState<'create' | 'members'>('create');
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferSelectedName, setTransferSelectedName] = useState<string | null>(null);
   const [authorizedMembersForCreate, setAuthorizedMembersForCreate] = useState([
-    { id: 'm1', name: '陈也', dept: '设计中心', role: '可编辑', desc: '查看/复制/打印/下载/评论/编辑/分享', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix', type: 'user' },
-    { id: 'm2', name: '项目一组', dept: '协作团队', role: '可查看', desc: '查看/复制/内容/打印/下载', type: 'group' }
+    { id: 'm1', name: '陈也', dept: '设计中心', role: '可编辑', desc: getPermissionDesc('可编辑'), avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix', type: 'user' },
+    { id: 'm2', name: '项目一组', dept: '协作团队', role: '可查看', desc: getPermissionDesc('可查看'), type: 'group' }
   ]);
 
   // Creation State
   const [createStep, setCreateStep] = useState(1);
-  const [newKbData, setNewKbData] = useState({
-    name: "",
-    desc: "",
-    scope: "restricted", // public_in_team, restricted, private
-    autoWatermark: true,
-    autoEncrypt: false
-  });
+  const [newKbData, setNewKbData] = useState(createInitialKbData);
+
+  const selectableOrgs = useMemo(
+    () => getSelectableOrgs(isKbAdmin, CURRENT_USER_ORG_ID),
+    [isKbAdmin]
+  );
+
+  const resetCreateForm = () => {
+    setCreateStep(1);
+    setNewKbData(createInitialKbData());
+  };
+
+  const handleStartCreate = () => {
+    resetCreateForm();
+    setViewMode("create");
+  };
 
   const selectedKb = mockTeamKbs.find(kb => kb.id === selectedKbId) || mockTeamKbs[0];
+  const selectedKbArchived = selectedKb.status === "已归档";
 
   // Dynamic state for members scoped to active KB
   const [kbMembers, setKbMembers] = useState<Record<string, Array<{ name: string; role: string; perm: string; select: boolean }>>>({
@@ -195,13 +399,21 @@ export function TeamKnowledgeBaseView() {
   const [toast, setToast] = useState<string | null>(null);
 
   // Sub-tabs for Settings Modal (团队设置, 文档设置, 团队文档模板, AI服务, 知识库视图)
-  const [settingsSubTab, setSettingsSubTab] = useState<"team" | "document" | "template" | "spec" | "ai" | "views">("document");
   
   // Document Security Settings Toggles
   const [docWatermark, setDocWatermark] = useState<boolean>(true);
-  const [watermarkContent, setWatermarkContent] = useState<string>("{用户名} {工号} · {访问时间}");
+  const [watermarkSelectedVars, setWatermarkSelectedVars] = useState<WatermarkVarKey[]>([
+    "username",
+    "employeeId",
+    "accessTime",
+  ]);
+  const [watermarkVarDropdownOpen, setWatermarkVarDropdownOpen] = useState(false);
+  const watermarkVarDropdownRef = useRef<HTMLDivElement>(null);
+  const watermarkContent = useMemo(
+    () => buildWatermarkTemplate(watermarkSelectedVars),
+    [watermarkSelectedVars]
+  );
   const [docExportControl, setDocExportControl] = useState<boolean>(false);
-  const [docLargeTransferLimit, setDocLargeTransferLimit] = useState<boolean>(true);
 
   // Scoped templates state
   const [kbTemplates, setKbTemplates] = useState<Record<string, Array<{ id: string; name: string; type: string; size: string; uploader: string; date: string }>>>({
@@ -211,7 +423,8 @@ export function TeamKnowledgeBaseView() {
     ],
     kb_retail: [], // Starts empty to show Image 2's empty state exactly!
     kb_policy: [
-      { id: 't3', name: '运营制度意见征求稿模板.docx', type: 'doc', size: '112KB', uploader: '周维', date: '三天前' }
+      { id: 't3', name: '制度修订说明模板.docx', type: 'doc', size: '112KB', uploader: '周维', date: '2026-04-12' },
+      { id: 't4', name: '制度审批记录模板.xlsx', type: 'excel', size: '86KB', uploader: '赵主管', date: '2026-04-18' },
     ]
   });
 
@@ -231,9 +444,23 @@ export function TeamKnowledgeBaseView() {
   const [teamKbNodes, setTeamKbNodes] = useState<Record<string, FileNode[]>>(DEFAULT_TEAM_KB_NODES);
 
   const fileListDisplayConfig = useMemo(
-    () => buildFileListDisplayConfig(specEnabled ? spec : null, specEnabled),
-    [spec, specEnabled]
+    () => {
+      if (!specEnabled || !TEAM_KB_SPEC_ENABLED_IDS.has(selectedKbId)) return undefined;
+      return buildTeamKbFileListDisplayConfig(selectedKbId, spec);
+    },
+    [selectedKbId, spec, specEnabled]
   );
+
+  useEffect(() => {
+    if (!watermarkVarDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (watermarkVarDropdownRef.current && !watermarkVarDropdownRef.current.contains(e.target as Node)) {
+        setWatermarkVarDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [watermarkVarDropdownOpen]);
   
   // 字段编辑状态
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
@@ -255,7 +482,7 @@ export function TeamKnowledgeBaseView() {
   // 当前知识库已启用的规范
   const getEnabledSpec = (kbId: string): CollectionSpec | null => {
     if (!specEnabled) return null;
-    return spec;
+    return getTeamKbEnabledSpec(kbId, spec);
   };
   
   // 字段操作函数
@@ -362,6 +589,18 @@ export function TeamKnowledgeBaseView() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const handleEnterTeamKb = (id: string) => {
+    const kb = mockTeamKbs.find((k) => k.id === id);
+    if (kb?.status === "已归档" && !isKbAdmin) {
+      showToast("该知识库已归档，仅管理员可查看归档内容");
+      return;
+    }
+    setSelectedKbId(id);
+    setWorkbenchMode("detail");
+    setWorkbenchTab("members");
+    setViewMode("workbench");
+  };
+
   const updatePermission = (index: number, newPerm: string) => {
     const currentMembers = [...(kbMembers[selectedKbId] || [])];
     if (currentMembers[index]) {
@@ -388,6 +627,45 @@ export function TeamKnowledgeBaseView() {
     }
   };
 
+  const transferCandidates = useMemo(
+    () => (kbMembers[selectedKbId] || []).filter((m) => m.role !== "知识库创建者"),
+    [kbMembers, selectedKbId]
+  );
+
+  const openTransferModal = () => {
+    setTransferSelectedName(null);
+    setShowTransferModal(true);
+  };
+
+  const handleConfirmTransfer = () => {
+    if (!transferSelectedName) return;
+    const currentMembers = [...(kbMembers[selectedKbId] || [])];
+    const creatorIndex = currentMembers.findIndex((m) => m.role === "知识库创建者");
+    const targetIndex = currentMembers.findIndex((m) => m.name === transferSelectedName);
+    if (creatorIndex === -1 || targetIndex === -1) return;
+
+    const oldCreator = currentMembers[creatorIndex];
+    const newCreator = currentMembers[targetIndex];
+
+    currentMembers[creatorIndex] = {
+      ...oldCreator,
+      role: "",
+      perm: "可管理",
+      select: true,
+    };
+    currentMembers[targetIndex] = {
+      ...newCreator,
+      role: "知识库创建者",
+      perm: "拥有所有权限",
+      select: false,
+    };
+
+    setKbMembers({ ...kbMembers, [selectedKbId]: currentMembers });
+    setShowTransferModal(false);
+    setTransferSelectedName(null);
+    showToast(`✓ 已将团队管理权转让给 ${newCreator.name}`);
+  };
+
   const getStatusColor = (tone: string) => {
     switch (tone) {
       case 'success': return 'bg-green-50 text-green-700 border-green-200';
@@ -397,254 +675,161 @@ export function TeamKnowledgeBaseView() {
     }
   };
 
+  const displayPolicies = useMemo(() => {
+    const nodes = teamKbNodes[selectedKbId] ?? [];
+    const fileNodes = nodes.filter((n) => n.type !== "folder");
+    const pendingCount = fileNodes.filter(
+      (n) => n.governanceStatus === "pending" || n.preprocessStatus === "pending"
+    ).length;
+    const successCount = fileNodes.filter((n) => n.governanceStatus === "success").length;
+    const templates = kbTemplates[selectedKbId] ?? [];
+
+    return selectedKb.policies
+      .filter((p) => p.label !== "资料上传规范" || selectedKbId === "kb_credit")
+      .map((p) => {
+        if (p.label === "团队文档模板") {
+          if (templates.length === 0) {
+            return { label: p.label, value: "暂未上传团队模板，可从本地或我的知识库上传。" };
+          }
+          const preview = templates
+            .slice(0, 2)
+            .map((t) => t.name.replace(/\.[^.]+$/, ""))
+            .join("、");
+          const suffix =
+            templates.length > 2
+              ? ` 等 ${templates.length} 个团队模板。`
+              : ` ${templates.length} 个团队模板。`;
+          return { label: p.label, value: `已维护 ${preview}${suffix}` };
+        }
+        if (p.label === "资料上传规范") {
+          if (!specEnabled) {
+            return { label: p.label, value: "未启用资料上传规范。" };
+          }
+          return { label: p.label, value: "已启用资料上传规范。" };
+        }
+        if (p.label === "文档设置" && selectedKbId === "kb_credit") {
+          const watermarkText = docWatermark ? "文档水印已开启" : "文档水印未开启";
+          const exportText = docExportControl ? "导出控制已开启" : "导出控制未开启";
+          return { label: p.label, value: `${watermarkText}、${exportText}。` };
+        }
+        if (p.label === "文件治理" && fileNodes.length > 0) {
+          const parts: string[] = [];
+          if (pendingCount > 0) parts.push(`${pendingCount} 份待人工确认`);
+          if (successCount > 0) parts.push(`${successCount} 份已治理并写入 MinIO`);
+          if (parts.length > 0) {
+            return { label: p.label, value: `${parts.join("，")}。` };
+          }
+        }
+        return p;
+      });
+  }, [selectedKb, selectedKbId, teamKbNodes, kbTemplates, specEnabled, docWatermark, docExportControl]);
+
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-auto w-full">
+    <div className="flex-1 flex flex-col h-full overflow-hidden w-full">
       {viewMode === "list" ? (
-        <div className="p-6 md:p-8 w-full max-w-[1440px] mx-auto space-y-6">
-          {/* Header */}
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-2xl font-medium text-slate-900 mb-2">团队知识库管理</h2>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <button 
-                onClick={() => setViewMode('create')}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg shadow-sm flex items-center gap-1 hover:bg-blue-700 transition"
-              >
-                <Plus className="w-4 h-4" /> 新建团队知识库
-              </button>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-4 gap-3">
-            <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="text-sm uppercase font-medium text-slate-400 tracking-wider mb-1">团队知识库</div>
-                  <div className="text-2xl font-medium text-slate-900 font-mono">4</div>
-                </div>
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-medium">库</div>
-              </div>
-              <div className="text-sm text-slate-500 mt-2 font-medium">我可维护的团队知识库</div>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="text-sm uppercase font-medium text-slate-400 tracking-wider mb-1">成员授权</div>
-                  <div className="text-2xl font-medium text-slate-900 font-mono">106</div>
-                </div>
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-medium">员</div>
-              </div>
-              <div className="text-sm text-slate-500 mt-2 font-medium">按知识库维护授权</div>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="text-sm uppercase font-medium text-slate-400 tracking-wider mb-1">近 7 日更新文件数</div>
-                  <div className="text-2xl font-medium text-slate-900 font-mono">15</div>
-                </div>
-                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-medium">新</div>
-              </div>
-              <div className="text-sm text-slate-500 mt-2 font-medium">新增或修改的文件</div>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="text-sm uppercase font-medium text-slate-400 tracking-wider mb-1">待治理</div>
-                  <div className="text-2xl font-medium text-slate-900 font-mono">22</div>
-                </div>
-                <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center font-medium">治</div>
-              </div>
-              <div className="text-sm text-slate-500 mt-2 font-medium">摘要、标签、目录异常</div>
-            </div>
-          </div>
-
-          {/* Main List and Detail */}
-          <div className="flex gap-3 mt-6">
-            <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <div>
-                  <h3 className="font-medium text-slate-800 text-sm">团队知识库维护列表</h3>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="搜索团队库..."
-                      value={teamSearchQuery}
-                      onChange={(e) => setTeamSearchQuery(e.target.value)}
-                      className="pl-8 pr-3 py-1.5 w-48 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="flex-1 overflow-auto">
-                {mockTeamKbs.filter(kb => kb.type === 'team' && (
-                  !teamSearchQuery.trim() ||
+        <KnowledgeBaseConsoleLayout
+          activeTab={consoleTab}
+          onTabChange={(tab) => onConsoleTabChange?.(tab)}
+          onCreate={handleStartCreate}
+          createLabel="新建"
+          searchQuery={teamSearchQuery}
+          onSearchChange={setTeamSearchQuery}
+          searchPlaceholder="搜索团队库..."
+          galleryItems={mockTeamKbs
+            .filter(
+              (kb) =>
+                kb.type === "team" &&
+                (!teamSearchQuery.trim() ||
                   kb.name.toLowerCase().includes(teamSearchQuery.toLowerCase()) ||
-                  kb.desc.toLowerCase().includes(teamSearchQuery.toLowerCase())
-                )).map((kb) => (
-                  <div 
-                    key={kb.id} 
-                    onClick={() => setSelectedKbId(kb.id)}
-                    className={cn(
-                      "grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-3 p-5 items-center border-b border-slate-50 cursor-pointer transition-colors group",
-                      selectedKbId === kb.id ? "bg-blue-50/50 ring-1 ring-inset ring-blue-200" : "hover:bg-slate-50"
-                    )}
-                  >
-                    <div className="flex gap-3 items-start min-w-0">
-                      <div className={cn(
-                        "w-9 h-9 rounded-lg flex items-center justify-center font-medium text-sm shrink-0",
-                        (kb as any).isSharedFromPersonal ? "bg-amber-50 text-amber-600" : "bg-indigo-50 text-indigo-600"
-                      )}>
-                        {(kb as any).isSharedFromPersonal ? "享" : "组"}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1">
-                          <h4 
-                            onClick={(e) => { e.stopPropagation(); setSelectedKbId(kb.id); setViewMode("workbench"); }}
-                            className="font-medium text-slate-900 text-sm truncate hover:text-blue-600 hover:underline cursor-pointer"
-                          >
-                            {kb.name}
-                          </h4>
-                          {(kb as any).isSharedFromPersonal && (
-                            <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-medium rounded-md uppercase">个人转共享</span>
-                          )}
-                        </div>
-                        <p className="text-sm text-slate-500 truncate mt-1">{kb.desc}</p>
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {kb.tags.map(t => (
-                            <span 
-                              key={t} 
-                              onClick={(e) => {
-                                if (t === "文档设置") {
-                                  e.stopPropagation();
-                                  setSelectedKbId(kb.id);
-                                  setSettingsSubTab("document");
-                                  setDrawerOpen("settings");
-                                }
-                              }}
-                              className={cn(
-                                "px-2 py-0.5 text-sm font-medium rounded-full transition-all",
-                                t === "文档设置"
-                                  ? "bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 cursor-pointer"
-                                  : "bg-slate-100 text-slate-500 border border-transparent"
-                              )}
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-slate-400 uppercase tracking-widest mb-1">范围</div>
-                      <div className="text-sm font-semibold text-slate-700">{kb.scope}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-slate-400 uppercase tracking-widest mb-1">成员 / 文件</div>
-                      <div className="text-sm font-medium text-slate-700 font-mono">{kb.members} / {kb.files}</div>
-                    </div>
-                    <div>
-                      <span className={cn("inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-sm font-medium border", getStatusColor(kb.statusTone))}>
-                        <div className="w-1 h-1 rounded-full bg-current"></div>
-                        {kb.status}
-                      </span>
-                      <div className="text-sm font-medium text-slate-500 mt-1">{kb.updatedAt}</div>
-                    </div>
-                  </div>
+                  kb.desc.toLowerCase().includes(teamSearchQuery.toLowerCase()))
+            )
+            .map((kb) => ({
+              id: kb.id,
+              name: kb.name,
+              desc: kb.desc,
+              status: kb.status,
+              statusTone: kb.statusTone,
+              isArchived: kb.status === "已归档",
+            }))}
+          selectedId={selectedKbId}
+          onSelect={setSelectedKbId}
+          onEnterKb={handleEnterTeamKb}
+          allowArchivedEntry={isKbAdmin}
+          selectedTitle={selectedKb.name}
+          selectedDesc={selectedKb.desc}
+          selectedStatus={selectedKb.status}
+          selectedStatusTone={selectedKb.statusTone}
+          metrics={{
+            docCount: selectedKb.files,
+            authorizedCount: selectedKb.members,
+            recentUpdates: selectedKb.recentUpdates,
+            anomalyTasks: selectedKb.anomalyTasks,
+          }}
+          detailContent={
+            <div className="space-y-3">
+              <OverviewSectionTitle>库内配置与状态</OverviewSectionTitle>
+              <div className="space-y-2">
+                {displayPolicies.map((p, idx) => (
+                  <OverviewDetailCard key={idx} title={p.label} description={p.value} themeIndex={idx} />
                 ))}
               </div>
-            </div>
-
-            <div className="w-[360px] shrink-0 bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex flex-col">
-              <div className="flex items-start justify-between mb-6 pb-4 border-b border-slate-100">
-                <div>
-                  <button className="text-sm font-medium text-slate-900 hover:text-blue-600 hover:underline text-left block" onClick={() => setViewMode('workbench')}>
-                    {selectedKb.name}
-                  </button>
-                </div>
-                <span className={cn("px-2.5 py-0.5 rounded-full text-sm font-medium border shrink-0", getStatusColor(selectedKb.statusTone))}>
-                  {selectedKb.status}
-                </span>
-              </div>
-
-              <div className="space-y-6 overflow-auto">
-                <div>
-                  <div className="grid grid-cols-2 gap-1">
-                     <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                       <div className="text-sm font-medium text-slate-500">创建者</div>
-                       <div className="text-sm font-medium text-slate-900 mt-1">{selectedKb.creator}</div>
-                     </div>
-                     <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                       <div className="text-sm font-medium text-slate-500">授权成员</div>
-                       <div className="text-sm font-medium text-slate-900 mt-1">{selectedKb.members} 人</div>
-                     </div>
-                     <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                       <div className="text-sm font-medium text-slate-500">文件夹</div>
-                       <div className="text-sm font-medium text-slate-900 mt-1">{selectedKb.folders} 个</div>
-                     </div>
-                     <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                       <div className="text-sm font-medium text-slate-500">文档</div>
-                       <div className="text-sm font-medium text-slate-900 mt-1">{selectedKb.docs} 份</div>
-                     </div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="space-y-2">
-                    {selectedKb.policies.map((p, idx) => {
-                      const isClickable = p.label === "文档设置" || p.label === "团队文档模板" || p.label === "资料上传规范";
-                      return (
-                        <div 
-                          key={idx} 
-                          onClick={() => {
-                            if (p.label === "文档设置") {
-                              setSettingsSubTab("document");
-                              setDrawerOpen("settings");
-                            } else if (p.label === "团队文档模板") {
-                              setSettingsSubTab("template");
-                              setDrawerOpen("settings");
-                            } else if (p.label === "资料上传规范") {
-                              setSettingsSubTab("spec");
-                              setDrawerOpen("settings");
-                            }
-                          }}
-                          className={cn(
-                            "p-3 bg-white border border-slate-200 rounded-lg transition-all",
-                            isClickable 
-                              ? "hover:border-blue-300 hover:shadow-xs cursor-pointer group hover:bg-slate-50/30" 
-                              : ""
-                          )}
-                        >
-                          <b className={cn(
-                            "block text-sm font-medium mb-1 flex items-center justify-between",
-                            isClickable ? "text-slate-950 group-hover:text-blue-600" : "text-slate-900"
-                          )}>
-                            <span>{p.label}</span>
-                          </b>
-                          <span className="block text-sm text-slate-500 leading-relaxed">{p.value}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <OverviewInfoCard label="共享范围" themeIndex={0}>
+                  {selectedKb.scope}
+                </OverviewInfoCard>
+                <OverviewInfoCard label="创建者" themeIndex={1}>
+                  {selectedKb.creator}
+                </OverviewInfoCard>
+                <OverviewInfoCard label="文件夹" themeIndex={2}>
+                  {selectedKb.folders} 个
+                </OverviewInfoCard>
+                <OverviewInfoCard label="最近更新" themeIndex={3}>
+                  {selectedKb.updatedAt}
+                </OverviewInfoCard>
               </div>
             </div>
-          </div>
-        </div>
+          }
+          panelFooter={
+            selectedKbArchived ? (
+              isKbAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => handleEnterTeamKb(selectedKbId)}
+                  className="w-full py-2.5 bg-slate-800 border border-slate-800 rounded-xl text-white font-medium text-sm hover:bg-slate-700 transition shadow-md"
+                >
+                  查看归档内容
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-400 font-medium text-sm cursor-not-allowed select-none"
+                >
+                  已归档，不可操作
+                </button>
+              )
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleEnterTeamKb(selectedKbId)}
+                className="w-full py-2.5 bg-blue-600 border border-blue-600 rounded-xl text-white font-medium text-sm hover:bg-blue-700 transition shadow-md shadow-blue-100"
+              >
+                进入工作台
+              </button>
+            )
+          }
+          emptyGalleryMessage="没有找到匹配的团队知识库"
+        />
       ) : viewMode === 'create' ? (
         /* CREATE KNOWLEDGE BASE VIEW */
-        <div className="p-6 md:p-12 w-full flex flex-col items-center overflow-auto min-h-0 bg-slate-50">
-          <div className="w-full max-w-[800px] border border-slate-200 bg-white rounded-2xl shadow-sm flex flex-col my-8 shrink-0">
+        <div className="p-6 md:p-12 w-full flex flex-col items-center overflow-auto min-h-0">
+          <div className="w-full max-w-[800px] glass-panel rounded-2xl flex flex-col my-8 shrink-0">
             <div className="px-10 pt-10 pb-4 text-left">
               <div className="flex items-center gap-3 mb-6">
                 <button 
                   onClick={() => {
                     if (createStep > 1) setCreateStep(createStep - 1);
-                    else { setViewMode('list'); setCreateStep(1); }
+                    else { resetCreateForm(); setViewMode('list'); }
                   }}
                   className="w-10 h-10 flex items-center justify-center border border-slate-200 rounded-xl hover:bg-slate-50 transition bg-white shadow-sm"
                 >
@@ -680,11 +865,19 @@ export function TeamKnowledgeBaseView() {
                         <input type="text" placeholder="例：2026 年度运营资料库" value={newKbData.name} onChange={(e) => setNewKbData({...newKbData, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium text-sm focus:ring-2 focus:ring-blue-200 focus:bg-white outline-none transition-all" />
                       </div>
                       <div className="space-y-2.5">
-                        <label className="block text-sm font-medium text-slate-400 uppercase tracking-widest">所属团队 / 部门 / 项目组</label>
-                        <div className="relative">
-                          <Users className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input type="text" placeholder="搜索并选择所属团队..." className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium text-sm focus:ring-2 focus:ring-blue-200 outline-none" />
-                        </div>
+                        <label className="block text-sm font-medium text-slate-400 uppercase tracking-widest">所属组织</label>
+                        <p className="text-sm text-slate-400 font-medium">
+                          {isKbAdmin
+                            ? "默认为您所在组织，可调整为任意组织"
+                            : "默认为您所在组织，可调整为下级组织"}
+                        </p>
+                        <OrgSearchSelect
+                          options={selectableOrgs}
+                          valueId={newKbData.organizationId}
+                          onChange={(organizationId, organizationName) =>
+                            setNewKbData({ ...newKbData, organizationId, organizationName })
+                          }
+                        />
                       </div>
                       <div className="space-y-2.5">
                         <label className="block text-sm font-medium text-slate-400 uppercase tracking-widest">简介描述</label>
@@ -781,10 +974,7 @@ export function TeamKnowledgeBaseView() {
                                       <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none group-hover/sel:text-blue-500 transition-colors" />
                                     </div>
                                     <div className="text-sm text-slate-400 font-medium mt-1.5 px-1 truncate max-w-[180px]">
-                                      {item.role === '仅查看' ? '查看' : 
-                                       item.role === '可查看' ? '查看/复制/打印/下载' :
-                                       item.role === '可评论' ? '查看/复制/打印/下载/评论' :
-                                       item.role === '可编辑' ? '查看/复制/打印/下载/评论/编辑/分享' : '拥有完整权限'}
+                                      {getPermissionDesc(item.role)}
                                     </div>
                                   </div>
                                   <button 
@@ -829,11 +1019,11 @@ export function TeamKnowledgeBaseView() {
                 <div className={cn("h-1.5 rounded-full transition-all duration-300", createStep === 3 ? "w-10 bg-blue-600" : "w-3 bg-slate-200")} />
               </div>
               <div className="flex items-center gap-3">
-                <button onClick={() => { setViewMode('list'); setCreateStep(1); }} className="px-5 py-2 text-slate-500 font-medium text-sm hover:text-slate-800 transition">取消</button>
+                <button onClick={() => { resetCreateForm(); setViewMode('list'); }} className="px-5 py-2 text-slate-500 font-medium text-sm hover:text-slate-800 transition">取消</button>
                 <button 
                   onClick={() => {
                     if (createStep < 3) setCreateStep(createStep + 1);
-                    else { setViewMode('list'); setCreateStep(1); }
+                    else { resetCreateForm(); setViewMode('list'); }
                   }}
                   className="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition shadow-lg shadow-blue-200"
                 >
@@ -844,71 +1034,129 @@ export function TeamKnowledgeBaseView() {
           </div>
         </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col overflow-hidden h-full relative">
-          <KnowledgeBaseDetail 
-            kbId={selectedKbId}
-            kbName={selectedKb.name}
-            kbType="team"
-            initialRole="admin"
-            onBack={() => setViewMode('list')}
-            initialNodes={teamKbNodes[selectedKbId] ?? DEFAULT_TEAM_KB_NODES[selectedKbId] ?? []}
-            fileListDisplayConfig={fileListDisplayConfig}
-            extraHeaderActions={
-              <div className="flex items-center gap-1">
-                <button onClick={() => setDrawerOpen('members')} className="px-4 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition shadow-sm">成员管理</button>
-                <button onClick={() => setDrawerOpen('settings')} className="px-4 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition shadow-sm">知识库管理</button>
-                <button onClick={() => setDrawerOpen('status')} className="px-4 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition shadow-sm">团队状态</button>
+        <div className="p-6 md:p-8 w-full max-w-[1440px] mx-auto h-full flex flex-col">
+          <div className="glass-panel rounded-2xl flex flex-col overflow-hidden h-full relative text-left">
+            {selectedKbArchived && (
+              <div className="shrink-0 px-5 py-3 bg-amber-50/80 border-b border-amber-200/50 flex items-center gap-2 text-sm text-amber-900 backdrop-blur-sm">
+                <FileArchive className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>该知识库已归档，当前为<strong className="font-medium mx-1">只读查阅</strong>模式，不可上传、编辑或变更配置。</span>
               </div>
-            }
-            onUploadClick={() => {
-              const enabledSpec = getEnabledSpec(selectedKbId);
-              if (enabledSpec && enabledSpec.enabled) {
-                setActiveSpec(enabledSpec);
-                setShowUploadSpecModal(true);
-                return true;
-              }
-              return false;
-            }}
-          />
+            )}
 
-          {/* Drawer Overlay */}
-          <AnimatePresence>
-            {drawerOpen && (
-              <>
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  onClick={() => setDrawerOpen(null)}
-                  className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm z-10"
-                />
-                <motion.div 
-                  initial={{ x: "100%" }}
-                  animate={{ x: 0 }}
-                  exit={{ x: "100%" }}
-                  transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                  className="absolute inset-y-0 right-0 w-[700px] bg-white border-l border-slate-200 shadow-2xl z-20 flex flex-col"
+            {/* Workbench Header — 与公共知识库工作台一致 */}
+            <div className="px-6 py-5 border-b border-white/40 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0 glass-header">
+              <div className="flex items-center gap-3 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  className="w-9 h-9 flex items-center justify-center glass-card rounded-xl hover:bg-white/50 transition shrink-0"
                 >
-                  <div className="p-6 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
-                    <div>
-                      <h3 className="text-lg font-medium text-slate-900">
-                        {drawerOpen === 'members' && "成员管理"}
-                        {drawerOpen === 'settings' && "知识库管理"}
-                        {drawerOpen === 'status' && "团队状态"}
-                      </h3>
-                      <p className="text-sm text-slate-500 mt-1">
-                        {drawerOpen === 'members' && "为当前团队知识库添加成员，并配置访问权限。"}
-                        {drawerOpen === 'settings' && "维护团队知识库基础信息、文档安全和模板。"}
-                        {drawerOpen === 'status' && "团队公告和成员近期操作动态。"}
-                      </p>
-                    </div>
-                    <button onClick={() => setDrawerOpen(null)} className="p-2 hover:bg-slate-200 rounded-lg text-slate-500 transition">
-                      <X className="w-5 h-5"/>
-                    </button>
-                  </div>
+                  <ArrowLeft className="w-4 h-4 text-slate-600" />
+                </button>
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-blue-600 text-white flex items-center justify-center font-medium text-sm shadow-md shrink-0">
+                  团
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-medium text-slate-900 flex items-center gap-1 flex-wrap">
+                    {selectedKb.name}
+                    <span className="px-2 py-0.5 bg-violet-50 border border-violet-200 text-violet-700 text-[9px] font-medium rounded-full select-none">团队知识库</span>
+                  </h3>
+                  <p className="text-sm text-slate-500 mt-1 line-clamp-1">{selectedKb.desc}</p>
+                </div>
+              </div>
 
-                  <div className="flex-1 overflow-auto p-6">
-                    {drawerOpen === 'members' && (
+              <div className="flex items-center gap-1 glass-card p-1 rounded-xl shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setWorkbenchMode("detail")}
+                  className={cn(
+                    "px-4 py-1.5 rounded-lg text-sm font-medium transition border-0",
+                    workbenchMode === "detail" ? "glass-card-active text-slate-900" : "text-slate-500 hover:text-slate-800 hover:bg-white/30"
+                  )}
+                >
+                  文件视图
+                </button>
+                {!selectedKbArchived && (
+                  <button
+                    type="button"
+                    onClick={() => { setWorkbenchMode("manage"); setWorkbenchTab("members"); }}
+                    className={cn(
+                      "px-4 py-1.5 rounded-lg text-sm font-medium transition border-0",
+                      workbenchMode === "manage" ? "glass-card-active text-slate-900" : "text-slate-500 hover:text-slate-800 hover:bg-white/30"
+                    )}
+                  >
+                    管理工作台
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto p-0 flex flex-col min-h-0">
+              <AnimatePresence mode="wait">
+                {workbenchMode === "detail" ? (
+                  <motion.div
+                    key={`team-detail-${selectedKbId}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex-1 overflow-hidden min-h-0"
+                  >
+                    <KnowledgeBaseDetail
+                      kbId={selectedKbId}
+                      kbName={selectedKb.name}
+                      kbType="team"
+                      initialRole={isKbAdmin ? "admin" : "member"}
+                      teamMemberPerm={isKbAdmin ? "可管理" : "可编辑"}
+                      isArchiveView={selectedKbArchived}
+                      onBack={() => setViewMode('list')}
+                      initialNodes={teamKbNodes[selectedKbId] ?? DEFAULT_TEAM_KB_NODES[selectedKbId] ?? []}
+                      fileListDisplayConfig={fileListDisplayConfig}
+                      hideHeader
+                      onUploadClick={() => {
+                        if (selectedKbArchived) return true;
+                        const enabledSpec = getEnabledSpec(selectedKbId);
+                        if (enabledSpec && enabledSpec.enabled) {
+                          setActiveSpec(enabledSpec);
+                          setShowUploadSpecModal(true);
+                          return true;
+                        }
+                        return false;
+                      }}
+                      exportControlEnabled={docExportControl}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key={`team-manage-${selectedKbId}`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="p-6 h-full overflow-auto"
+                  >
+                    <div className="flex items-center gap-6 border-b border-white/40 mb-6 pb-2">
+                      {([
+                        { id: 'members' as const, label: '成员管理' },
+                        { id: 'settings' as const, label: '知识库管理' },
+                        { id: 'status' as const, label: '团队动态' },
+                      ]).map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setWorkbenchTab(tab.id)}
+                          className={cn(
+                            "pb-2 text-sm font-medium transition-all relative border-0 bg-transparent cursor-pointer",
+                            workbenchTab === tab.id ? "text-blue-600" : "text-slate-400 hover:text-slate-600"
+                          )}
+                        >
+                          {tab.label}
+                          {workbenchTab === tab.id && (
+                            <motion.div layoutId="teamWbSubTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+
+                    {workbenchTab === 'members' && (
                       <div className="space-y-6">
                         <button
                           type="button"
@@ -998,7 +1246,18 @@ export function TeamKnowledgeBaseView() {
                                     )}
                                   </div>
                                 ) : (
-                                  <span className="text-sm font-medium text-slate-500 mr-2">{m.perm}</span>
+                                  <div className="flex items-center gap-2 mr-2">
+                                    <span className="text-sm font-medium text-slate-500">{m.perm}</span>
+                                    {m.role === "知识库创建者" && !selectedKbArchived && (
+                                      <button
+                                        type="button"
+                                        onClick={openTransferModal}
+                                        className="text-sm font-medium text-blue-600 hover:text-blue-700 border-0 bg-transparent cursor-pointer px-0"
+                                      >
+                                        转让
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             ))}
@@ -1007,120 +1266,178 @@ export function TeamKnowledgeBaseView() {
                       </div>
                     )}
 
-                    {drawerOpen === 'settings' && (
-                      <div className="flex flex-col h-full">
-                        <div className="flex gap-8 border-b border-slate-100 mb-6 shrink-0">
-                          {[
-                            { id: 'team', label: '团队知识库设置' },
-                            { id: 'document', label: '文档设置' },
-                            { id: 'template', label: '模板设置' },
-                            { id: 'spec', label: '资料上传规范' }
-                          ].map((tab) => (
-                            <button
-                              key={tab.id}
-                              onClick={() => setSettingsSubTab(tab.id as any)}
-                              className={cn(
-                                "text-sm font-medium pb-3 transition-all relative",
-                                settingsSubTab === tab.id 
-                                  ? "text-blue-600" 
-                                  : "text-slate-500 hover:text-slate-700"
-                              )}
-                            >
-                              {tab.label}
-                              {settingsSubTab === tab.id && (
-                                <motion.div layoutId="activeSettingTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
-                              )}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="flex-1 overflow-auto">
-                          {settingsSubTab === 'team' && (
-                            <div className="space-y-5">
-                              <div className="space-y-4">
-                                <div className="relative group">
-                                  <input type="text" value={selectedKb.name} readOnly className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 rounded-2xl text-sm font-medium text-slate-700 shadow-sm focus:bg-white transition-all" placeholder="团队知识库名称" />
+                    {workbenchTab === 'settings' && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="space-y-8 pb-12 text-left"
+                      >
+                        {/* 团队知识库设置 */}
+                        <section className="space-y-4">
+                          <div className="flex items-center gap-1 pb-2 border-b border-slate-100">
+                            <Settings className="w-4 h-4 text-blue-600" />
+                            <h3 className="text-sm font-medium text-slate-900">团队知识库设置</h3>
+                          </div>
+                          <div className="space-y-5">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2 md:col-span-2">
+                                  <label className="text-sm font-medium text-slate-400 uppercase tracking-widest">团队知识库名称</label>
+                                  <input type="text" value={selectedKb.name} readOnly className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-sm text-slate-700 focus:bg-white outline-none transition-all" placeholder="团队知识库名称" />
                                 </div>
-                                <div className="relative group">
-                                  <textarea rows={3} value={selectedKb.desc} readOnly className="w-full px-4 py-3 bg-slate-50/50 border border-slate-200 rounded-2xl text-sm font-medium text-slate-700 shadow-sm focus:bg-white transition-all" placeholder="团队知识库描述"></textarea>
+                                <div className="space-y-2 md:col-span-2">
+                                  <label className="text-sm font-medium text-slate-400 uppercase tracking-widest">简介描述</label>
+                                  <textarea rows={2} value={selectedKb.desc} readOnly className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-sm text-slate-700 focus:bg-white outline-none resize-none transition-all" placeholder="团队知识库描述"></textarea>
                                 </div>
                               </div>
-                              <div className="pt-6 border-t border-slate-100 space-y-3">
-                                <button onClick={() => showToast(`「${selectedKb.name}」已进入归档流程（演示）`)} className="flex items-center justify-between w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition">
-                                  <span>归档知识库</span>
-                                  <ChevronRight className="w-4 h-4 text-slate-400" />
-                                </button>
-                                <button onClick={() => showToast('团队转让申请已提交（演示）')} className="flex items-center justify-between w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition">
-                                  <span>转让团队</span>
-                                  <ChevronRight className="w-4 h-4 text-slate-400" />
-                                </button>
-                                <button onClick={() => showToast('解散团队操作需二次确认（演示）')} className="w-full px-4 py-2.5 border border-rose-200 rounded-xl text-sm font-medium text-rose-600 bg-white hover:bg-rose-50 transition">解散团队</button>
-                              </div>
-                            </div>
-                          )}
+                          </div>
+                        </section>
 
-                          {settingsSubTab === 'document' && (
-                            <div className="space-y-4">
-                              <div className="p-3 bg-slate-50/50 border border-slate-200 rounded-2xl space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <h4 className="text-sm font-medium text-slate-900">开启明文水印</h4>
-                                    <p className="text-sm text-slate-400 mt-1">成员查看、打印时注入带有 ID 的水印。</p>
+                        {/* 文档设置 */}
+                        <section className="space-y-4">
+                          <div className="flex items-center gap-1 pb-2 border-b border-slate-100">
+                            <ShieldCheck className="w-4 h-4 text-blue-600" />
+                            <h3 className="text-sm font-medium text-slate-900">文档设置</h3>
+                          </div>
+                          <div className="space-y-4">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-3 group hover:border-blue-200 transition-all md:col-span-2">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors">
+                                        <Shield className="w-4 h-4" />
+                                      </div>
+                                      <div>
+                                        <h4 className="text-sm font-medium text-slate-900">开启明文水印</h4>
+                                        <p className="text-sm text-slate-400 mt-0.5">成员查看、打印时注入带有 ID 的水印。</p>
+                                      </div>
+                                    </div>
+                                    <button 
+                                      onClick={() => setDocWatermark(!docWatermark)}
+                                      className={cn("w-10 h-5 rounded-full relative transition-colors shrink-0", docWatermark ? "bg-blue-600" : "bg-slate-200")}
+                                    >
+                                      <div className={cn("absolute top-0.5 bg-white w-4 h-4 rounded-full transition-all", docWatermark ? "right-0.5" : "left-0.5")} />
+                                    </button>
                                   </div>
-                                  <button 
-                                    onClick={() => setDocWatermark(!docWatermark)}
-                                    className={cn("w-10 h-5 rounded-full relative transition-colors shrink-0", docWatermark ? "bg-blue-600" : "bg-slate-200")}
-                                  >
-                                    <div className={cn("absolute top-0.5 bg-white w-4 h-4 rounded-full transition-all", docWatermark ? "right-0.5" : "left-0.5")} />
-                                  </button>
-                                </div>
-                                {docWatermark && (
-                                  <div className="pt-3 border-t border-slate-200/80 space-y-3">
-                                    <div>
+                                  {docWatermark && (
+                                    <div className="pt-3 border-t border-slate-200/80 space-y-3">
+                                    <div ref={watermarkVarDropdownRef} className="relative">
                                       <label className="block text-xs font-medium text-slate-500 mb-1.5">水印内容模板</label>
-                                      <input
-                                        type="text"
-                                        value={watermarkContent}
-                                        onChange={(e) => setWatermarkContent(e.target.value)}
-                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="例如：{用户名} {工号} · {访问时间}"
-                                      />
-                                      <p className="text-xs text-slate-400 mt-1.5">
-                                        支持变量：<span className="text-slate-500">{`{用户名}`}</span>、<span className="text-slate-500">{`{工号}`}</span>、<span className="text-slate-500">{`{访问时间}`}</span>、<span className="text-slate-500">{`{知识库名称}`}</span>
-                                      </p>
+                                      <button
+                                        type="button"
+                                        onClick={() => setWatermarkVarDropdownOpen((v) => !v)}
+                                        className={cn(
+                                          "w-full min-h-[40px] px-3 py-2 bg-white border rounded-lg text-sm text-left flex items-center justify-between gap-2 transition",
+                                          watermarkVarDropdownOpen
+                                            ? "border-blue-400 ring-2 ring-blue-500/20"
+                                            : "border-slate-200 hover:border-slate-300"
+                                        )}
+                                      >
+                                        <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+                                          {watermarkSelectedVars.length === 0 ? (
+                                            <span className="text-slate-400">请选择水印变量</span>
+                                          ) : (
+                                            watermarkSelectedVars.map((key) => {
+                                              const opt = WATERMARK_VAR_OPTIONS.find((o) => o.key === key);
+                                              return (
+                                                <span
+                                                  key={key}
+                                                  className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100"
+                                                >
+                                                  {opt?.label}
+                                                </span>
+                                              );
+                                            })
+                                          )}
+                                        </div>
+                                        <ChevronDown
+                                          className={cn(
+                                            "w-4 h-4 text-slate-400 shrink-0 transition-transform",
+                                            watermarkVarDropdownOpen && "rotate-180"
+                                          )}
+                                        />
+                                      </button>
+                                      <AnimatePresence>
+                                        {watermarkVarDropdownOpen && (
+                                          <motion.div
+                                            initial={{ opacity: 0, y: -4 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -4 }}
+                                            transition={{ duration: 0.15 }}
+                                            className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-slate-200 rounded-xl shadow-lg py-1 overflow-hidden"
+                                          >
+                                            {WATERMARK_VAR_OPTIONS.map((opt) => {
+                                              const checked = watermarkSelectedVars.includes(opt.key);
+                                              return (
+                                                <button
+                                                  key={opt.key}
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setWatermarkSelectedVars((prev) =>
+                                                      checked
+                                                        ? prev.filter((k) => k !== opt.key)
+                                                        : [...prev, opt.key]
+                                                    );
+                                                  }}
+                                                  className={cn(
+                                                    "w-full px-3 py-2.5 text-sm text-left flex items-center gap-2.5 hover:bg-slate-50 transition border-0 bg-transparent cursor-pointer",
+                                                    checked && "bg-blue-50/50"
+                                                  )}
+                                                >
+                                                  <span
+                                                    className={cn(
+                                                      "w-4 h-4 rounded border flex items-center justify-center shrink-0 transition",
+                                                      checked
+                                                        ? "bg-blue-600 border-blue-600 text-white"
+                                                        : "border-slate-300 bg-white"
+                                                    )}
+                                                  >
+                                                    {checked && <Check className="w-3 h-3" strokeWidth={3} />}
+                                                  </span>
+                                                  <span className="font-medium text-slate-800">{opt.label}</span>
+                                                  <span className="text-xs text-slate-400 ml-auto font-mono">{opt.token}</span>
+                                                </button>
+                                              );
+                                            })}
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+                                      {watermarkSelectedVars.length > 0 && (
+                                        <p className="text-xs text-slate-400 mt-2">
+                                          预览：<span className="text-slate-600 font-mono">{watermarkContent}</span>
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
-                                )}
-                              </div>
-                              <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-2xl">
-                                <div>
-                                  <h4 className="text-sm font-medium text-slate-900">导出控制</h4>
-                                  <p className="text-sm text-slate-400 mt-1">限制成员批量导出团队文档。</p>
+                                  )}
                                 </div>
-                                <button 
-                                  onClick={() => setDocExportControl(!docExportControl)}
-                                  className={cn("w-10 h-5 rounded-full relative transition-colors", docExportControl ? "bg-blue-600" : "bg-slate-200")}
-                                >
-                                  <div className={cn("absolute top-0.5 bg-white w-4 h-4 rounded-full transition-all", docExportControl ? "right-0.5" : "left-0.5")} />
-                                </button>
-                              </div>
-                              <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-200 rounded-2xl">
-                                <div>
-                                  <h4 className="text-sm font-medium text-slate-900">大文件传输限制</h4>
-                                  <p className="text-sm text-slate-400 mt-1">单文件超过 100MB 需管理员审批。</p>
+                                <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between group hover:border-blue-200 transition-all">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors">
+                                      <Download className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <h4 className="text-sm font-medium text-slate-900">导出控制</h4>
+                                      <p className="text-sm text-slate-400 mt-0.5">限制成员批量导出团队文档。</p>
+                                    </div>
+                                  </div>
+                                  <button 
+                                    onClick={() => setDocExportControl(!docExportControl)}
+                                    className={cn("w-10 h-5 rounded-full relative transition-colors shrink-0", docExportControl ? "bg-blue-600" : "bg-slate-200")}
+                                  >
+                                    <div className={cn("absolute top-0.5 bg-white w-4 h-4 rounded-full transition-all", docExportControl ? "right-0.5" : "left-0.5")} />
+                                  </button>
                                 </div>
-                                <button 
-                                  onClick={() => setDocLargeTransferLimit(!docLargeTransferLimit)}
-                                  className={cn("w-10 h-5 rounded-full relative transition-colors", docLargeTransferLimit ? "bg-blue-600" : "bg-slate-200")}
-                                >
-                                  <div className={cn("absolute top-0.5 bg-white w-4 h-4 rounded-full transition-all", docLargeTransferLimit ? "right-0.5" : "left-0.5")} />
-                                </button>
                               </div>
-                            </div>
-                          )}
+                          </div>
+                        </section>
 
-                          {settingsSubTab === 'template' && (
-                            <div className="space-y-4">
+                        {/* 模板设置 */}
+                        <section className="space-y-4">
+                          <div className="flex items-center gap-1 pb-2 border-b border-slate-100">
+                            <FileArchive className="w-4 h-4 text-blue-600" />
+                            <h3 className="text-sm font-medium text-slate-900">模板设置</h3>
+                          </div>
+                          <div className="space-y-4">
                               <div className="flex items-center justify-between">
                                 <h4 className="text-sm font-medium text-slate-900">团队专用模板</h4>
                                 <button 
@@ -1172,10 +1489,16 @@ export function TeamKnowledgeBaseView() {
                                   ))}
                                 </div>
                               )}
-                            </div>
-                          )}
-                          {settingsSubTab === 'spec' && (
-                            <div className="space-y-6">
+                          </div>
+                        </section>
+
+                        {/* 资料上传规范 */}
+                        <section className="space-y-4">
+                          <div className="flex items-center gap-1 pb-2 border-b border-slate-100">
+                            <ListChecks className="w-4 h-4 text-blue-600" />
+                            <h3 className="text-sm font-medium text-slate-900">资料上传规范</h3>
+                          </div>
+                          <div className="space-y-6">
                               {/* 启用状态开关 */}
                               <div className="flex items-center justify-between p-4 bg-slate-50/50 border border-slate-200 rounded-xl">
                                 <div>
@@ -1669,35 +1992,108 @@ export function TeamKnowledgeBaseView() {
                                 )}
                               </div>
                               </div>
+                          </div>
+                        </section>
+
+                        {/* 知识库生命周期 */}
+                        <section className="space-y-4">
+                          <div className="flex items-center gap-1 pb-2 border-b border-slate-100">
+                            <FileArchive className="w-4 h-4 text-blue-600" />
+                            <h3 className="text-sm font-medium text-slate-900">知识库生命周期</h3>
+                          </div>
+                          {selectedKbArchived ? (
+                            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-3">
+                              <FileArchive className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
+                              <div>
+                                <div className="text-sm font-medium text-slate-800">该团队知识库已归档</div>
+                                <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                                  归档时间：{selectedKb.updatedAt}。库内内容只读留存，不可再上传、编辑或变更配置。
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <div className="p-4 border border-rose-100 bg-rose-50/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-medium text-slate-900">归档整个知识库</div>
+                                  <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                                    归档后该团队知识库将变为「已归档」状态，停止一切写入与配置变更，仅保留只读查阅能力。
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => showToast(`「${selectedKb.name}」已进入归档流程（演示）`)}
+                                  className="shrink-0 px-4 py-2 border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 text-sm font-medium rounded-xl transition shadow-sm"
+                                >
+                                  归档知识库
+                                </button>
+                              </div>
+                              <div className="p-4 border border-slate-200 bg-slate-50/50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-medium text-slate-900">转让团队</div>
+                                  <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                                    将团队知识库的管理权转让给其他成员，转让后您将失去管理员权限。
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={openTransferModal}
+                                  className="shrink-0 px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-xl transition shadow-sm"
+                                >
+                                  转让团队
+                                </button>
+                              </div>
                             </div>
                           )}
-                        </div>
-                      </div>
+                        </section>
+                      </motion.div>
                     )}
 
-                    {drawerOpen === 'status' && (
-                      <div className="space-y-8">
+                    {workbenchTab === 'status' && (
+                      <div className="space-y-6">
                         <div>
-                          <h4 className="text-sm font-medium text-slate-900 mb-3">团队公告</h4>
-                          <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-sm font-medium text-amber-800">
-                            低置信度治理结果需在今日 18:00 前确认。
+                          <h4 className="text-sm font-semibold text-slate-900 mb-3">团队公告</h4>
+                          <div className="rounded-xl p-4 border border-amber-200/80 bg-gradient-to-r from-amber-50 to-orange-50/80 shadow-sm">
+                            <p className="text-sm font-medium text-amber-900 leading-relaxed">
+                              低置信度治理结果需在今日 18:00 前确认。
+                            </p>
                           </div>
                         </div>
                         <div>
-                          <h4 className="text-sm font-medium text-slate-900 mb-4">成员操作动态</h4>
-                          <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[5px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-slate-100">
+                          <h4 className="text-sm font-semibold text-slate-900 mb-4">成员操作动态</h4>
+                          <div className="space-y-5 relative py-1 before:absolute before:inset-y-0 before:left-[5px] before:-translate-x-px md:before:left-1/2 md:before:-translate-x-1/2 before:h-full before:w-[2px] before:bg-gradient-to-b before:from-blue-200/40 before:via-blue-300/80 before:to-blue-200/40 before:rounded-full">
                             {[
                               { t: '张敏 更新了文档设置', time: '今日 10:12' },
                               { t: '刘洋 上传了授信资料补录指引.pdf', time: '今日 09:40' },
                               { t: '陈宁 确认了 3 条标签推荐', time: '昨日 18:02' },
-                              { t: '系统生成 7 条低置信摘要待确认', time: '待处理', highlight: true }
+                              { t: '系统生成 7 条低置信摘要待确认', time: '待处理', highlight: true },
                             ].map((act, i) => (
-                              <div key={i} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                                <div className={cn("w-3 h-3 absolute left-0 md:left-1/2 -translate-x-[5px] md:-translate-x-1/2 rounded-full border-4 border-white", act.highlight ? "bg-blue-600" : "bg-slate-300")}></div>
-                                <div className="ml-6 md:ml-0 md:w-[calc(50%-1.5rem)] md:group-even:-translate-x-3 md:group-odd:translate-x-3">
-                                  <div className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
-                                    <div className="text-sm font-medium text-slate-700">{act.t}</div>
-                                    <div className="text-sm uppercase tracking-wider font-medium text-slate-400 mt-1">{act.time}</div>
+                              <div
+                                key={i}
+                                className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group"
+                              >
+                                <div
+                                  className={cn(
+                                    "w-3.5 h-3.5 absolute left-0 md:left-1/2 -translate-x-[7px] md:-translate-x-1/2 rounded-full border-[3px] border-white shadow-sm z-10",
+                                    act.highlight
+                                      ? "bg-blue-600 ring-2 ring-blue-200/80"
+                                      : "bg-slate-400 ring-2 ring-slate-200/80"
+                                  )}
+                                />
+                                <div className="ml-7 md:ml-0 md:w-[calc(50%-1.75rem)] md:group-even:-translate-x-3 md:group-odd:translate-x-3">
+                                  <div className={cn(
+                                    "p-3.5 rounded-xl border shadow-sm transition-colors",
+                                    act.highlight
+                                      ? "bg-blue-50/70 border-blue-200/80 hover:border-blue-300/80"
+                                      : "bg-white/90 border-slate-200/80 hover:border-blue-200/60"
+                                  )}>
+                                    <div className="text-sm font-medium text-slate-800 leading-snug">{act.t}</div>
+                                    <div className={cn(
+                                      "text-xs font-medium mt-1.5 tabular-nums",
+                                      act.highlight ? "text-blue-600" : "text-slate-500"
+                                    )}>
+                                      {act.time}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
@@ -1706,11 +2102,11 @@ export function TeamKnowledgeBaseView() {
                         </div>
                       </div>
                     )}
-                  </div>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1869,6 +2265,104 @@ export function TeamKnowledgeBaseView() {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* 转让团队 — 从现有成员中选择 */}
+      <AnimatePresence>
+        {showTransferModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[90] glass-overlay"
+              onClick={() => setShowTransferModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              className="fixed left-1/2 top-1/2 z-[91] w-[min(480px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 glass-modal rounded-2xl p-6"
+            >
+              <div className="flex items-start justify-between gap-3 mb-5">
+                <div>
+                  <h3 className="text-base font-medium text-slate-900">转让团队管理权</h3>
+                  <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                    从当前团队成员中选择新的创建者，转让后您将失去管理员权限。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTransferModal(false)}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 border-0 bg-transparent cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {transferCandidates.length === 0 ? (
+                <div className="py-10 text-center border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                  <Users className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                  <p className="text-sm text-slate-500">暂无可转让的成员</p>
+                  <p className="text-xs text-slate-400 mt-1">请先在成员管理中添加团队成员</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[320px] overflow-auto pr-1">
+                  {transferCandidates.map((member) => {
+                    const selected = transferSelectedName === member.name;
+                    return (
+                      <button
+                        key={member.name}
+                        type="button"
+                        onClick={() => setTransferSelectedName(member.name)}
+                        className={cn(
+                          "w-full flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer",
+                          selected
+                            ? "border-blue-300 bg-blue-50/60 ring-1 ring-blue-200"
+                            : "border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50"
+                        )}
+                      >
+                        <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-medium text-sm shrink-0">
+                          {member.name.slice(0, 1)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-slate-900">{member.name}</div>
+                          <div className="text-xs text-slate-400 mt-0.5">当前权限：{member.perm}</div>
+                        </div>
+                        <span
+                          className={cn(
+                            "w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center",
+                            selected ? "border-blue-600 bg-blue-600" : "border-slate-300 bg-white"
+                          )}
+                        >
+                          {selected && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowTransferModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition border-0 cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={!transferSelectedName}
+                  onClick={handleConfirmTransfer}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition border-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  确认转让
+                </button>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

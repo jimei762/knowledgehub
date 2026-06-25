@@ -27,8 +27,8 @@ export function ArchivesView({ onNavigateToKB }: ArchivesViewProps) {
   });
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f8fafc] overflow-hidden text-left">
-      <div className="px-8 py-6 border-b border-slate-200 bg-white shrink-0 shadow-sm relative z-10">
+    <div className="flex-1 flex flex-col h-full overflow-hidden text-left">
+      <div className="px-8 py-6 glass-header shrink-0 relative z-10">
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-[22px] font-medium text-slate-900 tracking-normal flex items-center gap-1">
@@ -84,7 +84,7 @@ export function ArchivesView({ onNavigateToKB }: ArchivesViewProps) {
                   initial={{ opacity: 0, scale: 0.98 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="group bg-white border border-slate-200 rounded-2xl p-5 hover:border-blue-200 hover:shadow-md transition-all relative overflow-hidden"
+                  className="group glass-panel rounded-2xl p-5 hover:border-blue-200/60 hover:shadow-md transition-all relative overflow-hidden"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">

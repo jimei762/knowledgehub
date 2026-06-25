@@ -1,18 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../api";
 import { KnowledgeBase, Subscription, FavoriteItem } from "../types";
 import { cn, formatPersonalSharedKbName } from "../lib/utils";
 import { Share2, Star, Clock, ListTodo, Plus, Edit2, Trash2, ShieldAlert, User, Globe, Eye, Download, MessageSquare, ChevronRight, Database, FileText, Layers, X, FileSpreadsheet, FileImage, UserPlus, Check, Folder, Lock } from "lucide-react";
 import { format } from "date-fns";
-import { QuickAccessView } from "./QuickAccessView";
 import { MemberSelectorModal } from "../components/MemberSelectorModal";
 import { motion, AnimatePresence } from "motion/react";
 import { MOCK_RECORDS } from "../constants";
-
-const DATA_PIPELINE_ARCHIVED = 1042;
-const DATA_PIPELINE_GOVERNING = 244;
-const DATA_PIPELINE_TOTAL = DATA_PIPELINE_ARCHIVED + DATA_PIPELINE_GOVERNING;
-const DATA_PIPELINE_ARCHIVED_PCT = Math.round((DATA_PIPELINE_ARCHIVED / DATA_PIPELINE_TOTAL) * 100);
+import { getPersonalKbFileStats } from "../lib/personalKbStats";
+import { OverviewStatCard, OVERVIEW_CARD_THEMES } from "../components/knowledge-base/OverviewCards";
+import { PERSONAL_SPACE_TEAM_KB } from "../lib/teamKbMock";
 
 const HOME_NOTIFICATIONS = [
   { id: 'n1', user: '张三', action: '评论了您的文件', target: 'UDA_运营平台PRD_v1.pdf', role: '产品经理', time: '10 分钟前', unread: true, avatar: '张' },
@@ -22,12 +19,12 @@ const HOME_NOTIFICATIONS = [
 
 const SUBSCRIPTION_PREVIEW_FILES: Record<string, Array<{ id: string; name: string; format: string; size: string; time: string }>> = {
   kb_1: [
-    { id: 'pf1', name: 'UDA_运营平台PRD_v1.pdf', format: 'pdf', size: '2.0 MB', time: '今天' },
-    { id: 'pf2', name: '会议纪要_0607.docx', format: 'docx', size: '485 KB', time: '2 天前' },
+    { id: 'file1', name: 'UDA_运营平台PRD_v1.pdf', format: 'pdf', size: '2.0 MB', time: '今天' },
+    { id: 'file3', name: '会议纪要_0607.docx', format: 'docx', size: '485 KB', time: '2 天前' },
   ],
-  kb_2: [
-    { id: 'sf1', name: '部门汇报.pptx', format: 'pptx', size: '2.0 MB', time: '今天' },
-    { id: 'sf2', name: '年度汇报.docx', format: 'docx', size: '485 KB', time: '2 天前' },
+  kb_credit: [
+    { id: 'file1', name: '授信资料补录指引.pdf', format: 'pdf', size: '3.4 MB', time: '今天' },
+    { id: 'file2', name: '客户经理培训课件.pptx', format: 'pptx', size: '18.6 MB', time: '6 月 2 日' },
   ],
   kb_3: [
     { id: 'sf3', name: '制度汇编.pdf', format: 'pdf', size: '3.2 MB', time: '本周' },
@@ -40,19 +37,33 @@ const SUBSCRIPTION_PREVIEW_FILES: Record<string, Array<{ id: string; name: strin
 };
 
 type SourceFilter = "all" | "personal" | "team" | "public";
-type QuickAccessType = 'recent' | 'todo' | 'favorites' | null;
 
 interface PersonalSpaceProps {
-  onSelectKb: (kbId: string, name: string, type: 'personal_own' | 'personal' | 'team' | 'public', fileId?: string) => void;
+  onSelectKb: (
+    kbId: string,
+    name: string,
+    type: 'personal_own' | 'personal' | 'team' | 'public',
+    fileId?: string,
+    sharePermission?: 'view' | 'download' | 'comment',
+  ) => void;
   onNavigateToNotifications?: () => void;
   onNavigateToDiscover?: () => void;
+  onNavigateToRecent?: () => void;
+  onNavigateToFavorites?: () => void;
+  onNavigateToTodo?: () => void;
 }
 
-export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigateToDiscover }: PersonalSpaceProps) {
+export function PersonalSpace({
+  onSelectKb,
+  onNavigateToNotifications,
+  onNavigateToDiscover,
+  onNavigateToRecent,
+  onNavigateToFavorites,
+  onNavigateToTodo,
+}: PersonalSpaceProps) {
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [activeQuickAccess, setActiveQuickAccess] = useState<QuickAccessType>(null);
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   
   // Local states for dashboard lists to support delete interactions
@@ -161,14 +172,14 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
   // Mock data for knowledge bases
   const mockKnowledgeBases: KnowledgeBase[] = [
     { id: "kb_1", name: "个人整理资料", ownerType: "personal", visibility: "private", status: "active", updatedAt: "2026-06-08T10:00:00Z" },
-    { id: "kb_2", name: "2026开门红活动", ownerType: "team", visibility: "team", status: "active", updatedAt: "2026-06-07T14:30:00Z" },
+    { id: "kb_credit", name: PERSONAL_SPACE_TEAM_KB.name, ownerType: "team", visibility: "team", status: "active", updatedAt: PERSONAL_SPACE_TEAM_KB.updatedAt },
     { id: "kb_3", name: "运营制度规范", ownerType: "public", visibility: "public", status: "active", updatedAt: "2026-06-01T09:00:00Z" },
   ];
 
   const mockSubscriptions: Subscription[] = [
-    { id: "sub_1", kbId: "kb_2", sourceLabel: "team", canCancel: false, canEdit: true, knowledgeBase: mockKnowledgeBases[1] },
+    { id: "sub_1", kbId: "kb_credit", sourceLabel: "team", canCancel: false, canEdit: true, knowledgeBase: mockKnowledgeBases[1] },
     { id: "sub_2", kbId: "kb_3", sourceLabel: "public", canCancel: false, canEdit: false, knowledgeBase: mockKnowledgeBases[2] },
-    { id: "sub_3", kbId: "kb_4", sourceLabel: "personal", sharedBy: "李四", canCancel: true, canEdit: false, knowledgeBase: { id: "kb_4", name: "设计团队素材库", ownerType: "personal", visibility: "private", status: "active", updatedAt: "2026-06-05T00:00:00Z" } },
+    { id: "sub_3", kbId: "kb_4", sourceLabel: "personal", sharedBy: "李四", sharePermission: "comment", canCancel: true, canEdit: false, knowledgeBase: { id: "kb_4", name: "设计团队素材库", ownerType: "personal", visibility: "private", status: "active", updatedAt: "2026-06-05T00:00:00Z" } },
   ];
 
   useEffect(() => {
@@ -287,6 +298,11 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
   };
 
   const personalKbs = kbs.filter(k => k.ownerType === "personal");
+
+  const personalKbFileStats = useMemo(
+    () => getPersonalKbFileStats(personalKbs.map((k) => k.id)),
+    [personalKbs]
+  );
   
   const filteredSubscriptions = subscriptions.filter(s => 
     sourceFilter === "all" ? true : s.sourceLabel === sourceFilter
@@ -341,7 +357,7 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
     const badgeClass = opts.badgeClassName ?? 'bg-blue-100 text-blue-700';
 
     return (
-      <div key={opts.cardKey} className="relative group border border-slate-200 rounded-2xl p-4 bg-slate-50/40 hover:border-blue-200 transition-colors">
+      <div key={opts.cardKey} className="relative group glass-card rounded-2xl p-4 border border-white/55 hover:border-blue-200/60 hover:shadow-[0_8px_24px_rgba(37,99,235,0.08)] transition-all duration-300">
         <div className="flex items-start gap-3 mb-3">
           <div className={cn('min-w-0 flex-1', opts.personalKb && 'pr-12')}>
             <button
@@ -360,16 +376,16 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3.5">
           {previewFiles.slice(0, 2).map(file => {
             const icon = formatFileIcon(file.format);
             return (
               <button
                 key={file.id}
                 onClick={() => opts.onOpenFile(file.id)}
-                className="bg-white border border-slate-200 rounded-xl overflow-hidden text-left hover:border-blue-200 hover:shadow-sm transition-all cursor-pointer"
+                className="glass-card rounded-xl overflow-hidden text-left border border-slate-200/80 shadow-[0_1px_4px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/50 hover:border-blue-300/80 hover:ring-blue-200/60 hover:shadow-md transition-all cursor-pointer"
               >
-                <div className="h-24 bg-gradient-to-br from-slate-100 to-slate-200/80 flex items-center justify-center">
+                <div className="h-24 bg-gradient-to-br from-white/70 to-blue-50/80 flex items-center justify-center backdrop-blur-sm border-b border-slate-200/40">
                   <FileText className="w-8 h-8 text-slate-300" />
                 </div>
                 <div className="p-2.5 flex items-center gap-2">
@@ -430,12 +446,13 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
   };
 
   const renderOverviewRing = () => {
+    const { archivedPct } = personalKbFileStats;
     const r = 42;
     const circumference = 2 * Math.PI * r;
-    const offset = circumference - (DATA_PIPELINE_ARCHIVED_PCT / 100) * circumference;
+    const offset = circumference - (archivedPct / 100) * circumference;
     return (
       <svg width="112" height="112" viewBox="0 0 100 100" className="shrink-0">
-        <circle cx="50" cy="50" r={r} fill="none" stroke="#e8eef5" strokeWidth="7" />
+        <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(148,163,184,0.25)" strokeWidth="7" />
         <circle
           cx="50" cy="50" r={r} fill="none" stroke="#3b82f6" strokeWidth="7"
           strokeLinecap="round"
@@ -444,8 +461,8 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
           transform="rotate(-90 50 50)"
           className="transition-all duration-700"
         />
-        <text x="50" y="46" textAnchor="middle" className="fill-blue-600 text-[15px] font-semibold" style={{ fontSize: 15, fontWeight: 600 }}>
-          {DATA_PIPELINE_ARCHIVED_PCT}%
+        <text x="50" y="46" textAnchor="middle" className="fill-blue-600" style={{ fontSize: 15, fontWeight: 600 }}>
+          {archivedPct}%
         </text>
         <text x="50" y="60" textAnchor="middle" className="fill-slate-400" style={{ fontSize: 8 }}>
           已入库
@@ -507,19 +524,8 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f8fafc] overflow-hidden relative">
-      {activeQuickAccess && (
-        <QuickAccessView 
-          type={activeQuickAccess} 
-          onBack={() => setActiveQuickAccess(null)} 
-          onNavigateToKB={(kbId, fileId) => {
-            onSelectKb(kbId, '知识库说明', 'personal', fileId);
-            setActiveQuickAccess(null);
-          }}
-        />
-      )}
-
-      <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+      <div className="flex-1 overflow-y-auto relative z-10">
         <div className="p-5 md:p-6 w-full max-w-[1480px] mx-auto">
           <div className="mb-5">
             <h2 className="text-[24px] font-medium text-slate-900 leading-snug m-0">个人知识空间</h2>
@@ -528,66 +534,71 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(420px,480px)_minmax(0,1fr)] gap-5 items-start">
             {/* 左侧栏 */}
             <div className="flex flex-col gap-4">
-              {/* 知识库总览 — 保留当前环形 + 分类格 */}
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
+              {/* 知识库总览 — 个人库文件统计 + 玻璃拟态卡片 */}
+              <div className="relative overflow-hidden rounded-2xl">
+                <div className="glass-ambient-blob pointer-events-none absolute -left-10 -top-10 size-36 rounded-full bg-blue-400/25 blur-3xl" />
+                <div className="glass-ambient-blob pointer-events-none absolute right-0 bottom-0 size-28 rounded-full bg-indigo-300/20 blur-3xl" />
+                <div className="glass-panel rounded-2xl p-5 relative">
+                <div className="mb-4">
                   <h3 className="text-sm font-semibold text-slate-900 m-0">知识库总览</h3>
                 </div>
                 <div className="flex gap-4">
                   <div className="flex flex-col items-center shrink-0">
+                    <span className="mb-2 px-2.5 py-0.5 rounded-full text-[10px] font-medium text-blue-700 bg-blue-500/10 border border-blue-200/50 backdrop-blur-sm">
+                      个人知识库内文件
+                    </span>
                     {renderOverviewRing()}
-                    <div className="text-xs text-slate-500 mt-1 tabular-nums">
-                      {DATA_PIPELINE_ARCHIVED.toLocaleString()} / {DATA_PIPELINE_TOTAL.toLocaleString()} 件
+                    <div className="text-xs text-slate-500 mt-1.5 tabular-nums text-center">
+                      {personalKbFileStats.archived} / {personalKbFileStats.total} 件
                     </div>
                   </div>
-                  <div className="flex-1 grid grid-cols-2 gap-2 min-w-0">
+                  <div className="flex-1 grid grid-cols-2 gap-3 min-w-0">
                     {[
-                      { label: '个人库', value: overviewStats.personalKb, icon: Folder, iconBg: 'bg-blue-50 text-blue-500' },
-                      { label: '订阅库', value: overviewStats.subscribedKb, icon: Layers, iconBg: 'bg-violet-50 text-violet-500' },
-                      { label: '已入库', value: DATA_PIPELINE_ARCHIVED, icon: Database, iconBg: 'bg-emerald-50 text-emerald-500' },
-                      { label: '治理中', value: DATA_PIPELINE_GOVERNING, icon: FileText, iconBg: 'bg-amber-50 text-amber-500' },
+                      { label: '个人库', value: overviewStats.personalKb, icon: Folder, themeIndex: 0 },
+                      { label: '订阅库', value: overviewStats.subscribedKb, icon: Layers, themeIndex: 1 },
+                      { label: '已入库', value: personalKbFileStats.archived, icon: Database, themeIndex: 2 },
+                      { label: '治理中', value: personalKbFileStats.governing, icon: FileText, themeIndex: 3 },
                     ].map(item => (
-                      <div key={item.label} className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-100 bg-slate-50/50">
-                        <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', item.iconBg)}>
-                          <item.icon className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-[10px] text-slate-400">{item.label}</div>
-                          <div className="text-sm font-semibold text-slate-900 tabular-nums">{item.value.toLocaleString()}</div>
-                        </div>
-                      </div>
+                      <OverviewStatCard
+                        key={item.label}
+                        label={item.label}
+                        value={item.value}
+                        icon={item.icon}
+                        theme={OVERVIEW_CARD_THEMES[item.themeIndex]}
+                      />
                     ))}
                   </div>
                 </div>
-                <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2">
+                <div className="mt-4 pt-3 border-t border-white/40 flex flex-wrap gap-2">
                   {[
-                    { label: '最近访问', icon: Clock, action: () => setActiveQuickAccess('recent'), count: overviewStats.recentFiles },
-                    { label: '我的收藏', icon: Star, action: () => setActiveQuickAccess('favorites'), count: favorites.length },
-                    { label: '待办事项', icon: ListTodo, action: () => setActiveQuickAccess('todo'), count: overviewStats.pendingTodo },
+                    { label: '最近访问', icon: Clock, action: () => onNavigateToRecent?.(), count: overviewStats.recentFiles },
+                    { label: '我的收藏', icon: Star, action: () => onNavigateToFavorites?.(), count: favorites.length },
+                    { label: '待办事项', icon: ListTodo, action: () => onNavigateToTodo?.(), count: overviewStats.pendingTodo },
                   ].map(item => (
                     <button
                       key={item.label}
                       type="button"
                       onClick={item.action}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-50 text-slate-600 text-xs font-medium border border-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-100 transition-colors cursor-pointer"
+                      className="glass-card inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-600 text-xs font-medium border border-white/55 hover:bg-white/50 hover:text-blue-600 hover:border-blue-200/60 transition-all cursor-pointer"
                     >
                       <item.icon className="w-3.5 h-3.5" />
                       {item.label}
                       {item.count > 0 && (
-                        <span className="px-1 py-px rounded bg-white text-[10px] text-slate-400 font-normal">{item.count}</span>
+                        <span className="px-1 py-px rounded bg-white/70 text-[10px] text-slate-400 font-normal">{item.count}</span>
                       )}
                     </button>
                   ))}
                 </div>
+                </div>
               </div>
 
               {/* 个人知识库 */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <div className="glass-panel rounded-2xl overflow-hidden flex flex-col">
+                <div className="px-4 py-3 border-b border-white/40 flex items-center justify-between">
                   <h3 className="text-sm font-medium text-slate-900 m-0">个人知识库</h3>
                   <button
                     onClick={openCreateKbModal}
-                    className="h-8 inline-flex items-center gap-1 px-2.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition border-0 cursor-pointer"
+                    className="h-8 inline-flex items-center gap-1 px-2.5 rounded-lg bg-blue-600/90 text-white text-xs font-medium hover:bg-blue-700 transition border-0 cursor-pointer shadow-sm shadow-blue-500/20"
                   >
                     <Plus className="w-3.5 h-3.5" /> 新建
                   </button>
@@ -617,8 +628,8 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
             {/* 右侧栏 */}
             <div className="flex flex-col gap-4 min-w-0">
               {/* 订阅的知识库 */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+              <div className="glass-panel rounded-2xl overflow-hidden">
+                <div className="px-5 py-4 border-b border-white/40 flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-medium text-slate-900 m-0">订阅的知识库</h3>
                     <p className="text-xs text-slate-400 mt-0.5">协作共享与组织订阅空间</p>
@@ -626,7 +637,7 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
                   <button
                     type="button"
                     onClick={() => onNavigateToDiscover?.()}
-                    className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-1 bg-white cursor-pointer"
+                    className="glass-card px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-blue-600 flex items-center gap-1 cursor-pointer border border-white/55"
                   >
                     <UserPlus className="w-3.5 h-3.5" /> 浏览发现
                   </button>
@@ -637,8 +648,10 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
                       key={f}
                       onClick={() => setSourceFilter(f)}
                       className={cn(
-                        'px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap border-0 transition-colors cursor-pointer',
-                        sourceFilter === f ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                        'px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap border transition-colors cursor-pointer',
+                        sourceFilter === f
+                          ? 'bg-slate-900/90 text-white shadow-sm'
+                          : 'glass-card text-slate-500 border-white/55 hover:text-slate-800 hover:bg-white/50'
                       )}
                     >
                       {f === 'all' ? '全部' : sourceLabelText(f)}
@@ -657,8 +670,20 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
                         badgeLabel: sourceLabelText(sub.sourceLabel),
                         updatedAt: sub.knowledgeBase.updatedAt,
                         previewKbId: sub.kbId,
-                        onOpenKb: () => onSelectKb(sub.knowledgeBase.id, displayName, getKbTypeForSub(sub.sourceLabel)),
-                        onOpenFile: (fileId) => onSelectKb(sub.knowledgeBase.id, displayName, getKbTypeForSub(sub.sourceLabel), fileId),
+                        onOpenKb: () => onSelectKb(
+                          sub.knowledgeBase.id,
+                          displayName,
+                          getKbTypeForSub(sub.sourceLabel),
+                          undefined,
+                          sub.sourceLabel === 'personal' ? sub.sharePermission : undefined,
+                        ),
+                        onOpenFile: (fileId) => onSelectKb(
+                          sub.knowledgeBase.id,
+                          displayName,
+                          getKbTypeForSub(sub.sourceLabel),
+                          fileId,
+                          sub.sourceLabel === 'personal' ? sub.sharePermission : undefined,
+                        ),
                       });
                     })
                   )}
@@ -666,11 +691,11 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
               </div>
 
               {/* 最近访问的文件 */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="glass-panel rounded-2xl overflow-hidden">
+                <div className="px-5 py-4 border-b border-white/40 flex items-center justify-between">
                   <h3 className="text-sm font-medium text-slate-900 m-0">最近访问</h3>
                   <button
-                    onClick={() => setActiveQuickAccess('recent')}
+                    onClick={() => onNavigateToRecent?.()}
                     className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-0.5 border-0 bg-transparent cursor-pointer"
                   >
                     查看全部 <ChevronRight className="w-3.5 h-3.5" />
@@ -683,9 +708,9 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
                       <button
                         key={item.id}
                         onClick={() => onSelectKb(item.kbId || 'kb-1', item.kbName || '知识库', item.kbType || 'personal', item.type === 'file' ? item.id : undefined)}
-                        className="w-[180px] shrink-0 bg-white border border-slate-200 rounded-xl overflow-hidden text-left hover:border-blue-200 hover:shadow-md transition-all group cursor-pointer"
+                        className="w-[180px] shrink-0 glass-card rounded-xl overflow-hidden text-left border border-white/60 hover:border-blue-200/70 hover:shadow-md transition-all group cursor-pointer"
                       >
-                        <div className="h-28 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center relative">
+                        <div className="h-28 bg-gradient-to-br from-white/50 to-blue-100/60 flex items-center justify-center relative backdrop-blur-sm">
                           {item.type === 'kb' ? (
                             <Database className="w-10 h-10 text-blue-300" />
                           ) : (
@@ -707,8 +732,8 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
               </div>
 
               {/* 协作通知 */}
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="glass-panel rounded-2xl overflow-hidden">
+                <div className="px-5 py-4 border-b border-white/40 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-medium text-slate-900 m-0">协作通知</h3>
                     <span className="px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600 text-[10px] font-medium">
@@ -722,9 +747,9 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
                     查看更多 <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <div className="divide-y divide-slate-100">
+                <div className="divide-y divide-white/30">
                   {HOME_NOTIFICATIONS.map(item => (
-                    <div key={item.id} className="px-5 py-3.5 flex items-start gap-3 hover:bg-slate-50/80 transition-colors">
+                    <div key={item.id} className="px-5 py-3.5 flex items-start gap-3 hover:bg-white/30 transition-colors">
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 text-slate-700 text-xs font-medium flex items-center justify-center shrink-0">
                         {item.avatar}
                       </div>
@@ -751,12 +776,12 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
       {/* Action Modals */}
       <AnimatePresence>
         {['create_kb', 'edit_kb'].includes(modal.type) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-3">
+          <div className="fixed inset-0 z-50 flex items-center justify-center glass-overlay p-3">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
                exit={{ opacity: 0, scale: 0.95 }}
-               className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-[480px]"
+               className="glass-modal rounded-2xl p-6 w-full max-w-[480px]"
              >
                <h3 className="text-[16px] font-medium text-slate-900 mb-4">
                  {modal.type === 'create_kb' ? '新建个人知识库' : '编辑知识库信息'}
@@ -833,12 +858,12 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
         )}
 
         {modal.type === 'delete_kb' && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center glass-overlay">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
                exit={{ opacity: 0, scale: 0.95 }}
-               className="bg-white rounded-2xl shadow-2xl p-6 w-[400px]"
+               className="glass-modal rounded-2xl p-6 w-[400px]"
              >
                <h3 className="text-[16px] font-medium text-rose-600 flex items-center gap-1 mb-2">
                  确认删除知识库
@@ -860,7 +885,7 @@ export function PersonalSpace({ onSelectKb, onNavigateToNotifications, onNavigat
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
                exit={{ opacity: 0, scale: 0.95 }}
-               className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-[500px] text-left border border-slate-150/80 my-8 shadow-slate-200"
+               className="glass-modal rounded-2xl p-6 w-full max-w-[500px] text-left my-8"
              >
                {/* Header */}
                <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">

@@ -33,6 +33,7 @@ export interface Subscription {
   kbId: string;
   sourceLabel: SourceLabel;
   sharedBy?: string;
+  sharePermission?: 'view' | 'download' | 'comment';
   canCancel: boolean;
   canEdit: boolean;
   knowledgeBase: KnowledgeBase;

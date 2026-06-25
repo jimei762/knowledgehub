@@ -1,6 +1,18 @@
 import React, { useState, useRef, useEffect, useMemo, MouseEvent, ChangeEvent } from "react";
 import { cn } from "../lib/utils";
 import { format } from "date-fns";
+import {
+  canProcessGovernance,
+  canViewGovernance,
+  CURRENT_TEAM_USER,
+  type TeamMemberPerm,
+} from "../lib/teamPermissions";
+import {
+  canSharedComment,
+  canSharedDownload,
+  isOthersSharedKb,
+  type SharePermission,
+} from "../lib/sharedKbAccess";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   ArrowLeft, ChevronRight, Search, Plus, 
@@ -29,6 +41,9 @@ export interface FileNode {
   isFavorited?: boolean;
   publishStatus?: 'pending_audit' | 'approved' | 'published' | 'offline' | 'archived';
   isRequiredRead?: boolean;
+  downloadable?: boolean;
+  /** 公共库：曾发布后下线，文件列表展示为待发布 */
+  isOfflineDraft?: boolean;
   materialType?: string;
   fileTags?: string[];
   fileMetadata?: Record<string, string>;
@@ -41,7 +56,7 @@ const MOCK_PUBLIC_NODES: FileNode[] = [
   { id: 'file1', parentId: 'f1', name: '网点服务标准手册 2026 版.pdf', type: 'document', format: 'pdf', size: 12.4 * 1024 * 1024, updatedAt: '2026-06-08T10:00:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '张敏', publishStatus: 'published', content: '## 第一章：网点形象与环境要求\n\n1.1 外部形象：网点招牌应保持整洁完好，夜间灯箱准时开启。\n1.2 厅堂环境：保持空气清新，温度适宜，地面光洁，宣传折页摆放有序。\n1.3 柜台设施：防弹玻璃洁净，密码器、评价器运转正常。\n\n## 第二章：柜面服务标准基本礼仪\n\n2.1 仪容仪表：身着分行制服，佩戴工牌，妆容自然得体。\n2.2 站姿迎客：当客户步入柜台窗口，应主动微笑点头，双手接递证件。' },
   { id: 'file2', parentId: 'f1', name: '高风险投诉应急话术.docx', type: 'document', format: 'docx', size: 4.1 * 1024 * 1024, updatedAt: '2026-06-10T15:00:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '刘洋', publishStatus: 'approved', content: '# 高风险投诉突发应对话术\n\n适用于网点现场突发激烈投诉、媒体关注事件或客户情绪爆发等场景。\n\n## 一、 首要安抚原则\n1. 控制自身情绪：不与客户针锋相对。\n2. 引入独立安抚地点：及时请客户入座客户关怀室（或行长接待室），送上一杯温水。\n3. 高效聆听：引导客户讲出具体诉求，做好记录。\n\n## 二、 金句/核心应答话术\n> "非常理解您的心情。请您放心，我们行对您的反馈非常重视，一定负责到底。我们借一步沟通，为您专门核查处理。"' },
   { id: 'file3', parentId: 'f1', name: '厅堂排队冲突解决指引方案.pptx', type: 'document', format: 'pptx', size: 18.2 * 1024 * 1024, updatedAt: '2026-06-09T09:00:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '陈宁', publishStatus: 'pending_audit', content: '# 厅堂排队冲突极速调处指引 S.O.P.\n\n## 第一阶段：冲突预判与阻断\n- 观察等候区神色：当客户频繁看表、叹气，或等候时间超过15分钟时，大堂经理应靠前迎奉、适度问询。\n- 弹性分配机制：依据多窗智能派单规则，及时开启弹性柜台。\n\n## 第二阶段：核心解释话术\n- "因为当前系统网络核验和企业开户穿透审核需要一定耗时，我们会尽力为您提速。这是一张业务预填单，大家可以先核对基础信息。"' },
-  { id: 'file4', parentId: 'f1', name: '大客户理财推介白皮书.pdf', type: 'document', format: 'pdf', size: 8.6 * 1024 * 1024, updatedAt: '2026-06-05T12:00:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '王建国', publishStatus: 'offline', content: '# 财富级高净值大客户定制化投顾推进方案\n\n## 一、 客群细分说明\n针对非代发、留存AUM超300万的家族和私行门槛客户设计专属白皮书配置模型。\n\n## 二、 主要销售流程\n1. 财务状况全面测算\n2. 收益底表的精挑上演' }
+  { id: 'file4', parentId: 'f1', name: '大客户理财推介白皮书.pdf', type: 'document', format: 'pdf', size: 8.6 * 1024 * 1024, updatedAt: '2026-06-05T12:00:00Z', governanceStatus: 'success', preprocessStatus: 'success', creator: '王建国', publishStatus: 'approved', isOfflineDraft: true, content: '# 财富级高净值大客户定制化投顾推进方案\n\n## 一、 客群细分说明\n针对非代发、留存AUM超300万的家族和私行门槛客户设计专属白皮书配置模型。\n\n## 二、 主要销售流程\n1. 财务状况全面测算\n2. 收益底表的精挑上演' }
 ];
 
 const INITIAL_NODES: FileNode[] = [
@@ -57,8 +72,67 @@ const INITIAL_NODES: FileNode[] = [
   { id: 'file5', parentId: 'root', name: '年度预算测算.xlsx', type: 'spreadsheet', format: 'xlsx', size: 1.2 * 1024 * 1024, updatedAt: '2026-06-10T09:15:00Z', governanceStatus: 'success', preprocessStatus: 'success' },
 ];
 
+function buildKbPreviewNodes(
+  fileEntries: Array<{ id: string; name: string; format: string; type?: FileNode['type']; content?: string }>
+): FileNode[] {
+  const now = new Date().toISOString();
+  return [
+    { id: 'root', parentId: null, name: '全部文件', type: 'folder', updatedAt: now, governanceStatus: 'success', preprocessStatus: 'success', creator: '系统' },
+    { id: 'f1', parentId: 'root', name: '资料目录', type: 'folder', updatedAt: now, governanceStatus: 'success', preprocessStatus: 'success', creator: '系统' },
+    ...fileEntries.map((f) => {
+      let type: FileNode['type'] = f.type ?? 'document';
+      if (!f.type) {
+        if (f.format === 'xlsx' || f.format === 'xls') type = 'spreadsheet';
+        else if (f.format === 'pptx' || f.format === 'ppt') type = 'presentation';
+        else if (f.format === 'md') type = 'note';
+      }
+      return {
+        id: f.id,
+        parentId: 'f1',
+        name: f.name,
+        type,
+        format: f.format,
+        size: 1024 * 1024,
+        updatedAt: now,
+        governanceStatus: 'success' as const,
+        preprocessStatus: 'success' as const,
+        creator: '系统',
+        content: f.content,
+      };
+    }),
+  ];
+}
+
+const KB_NODES_BY_ID: Record<string, FileNode[]> = {
+  kb_1: INITIAL_NODES,
+  kb_2: buildKbPreviewNodes([
+    { id: 'sf1', name: '部门汇报.pptx', format: 'pptx', type: 'presentation' },
+    { id: 'sf2', name: '年度汇报.docx', format: 'docx' },
+  ]),
+  kb_3: buildKbPreviewNodes([
+    { id: 'sf3', name: '制度汇编.pdf', format: 'pdf' },
+    { id: 'sf4', name: '合规检查清单.xlsx', format: 'xlsx', type: 'spreadsheet' },
+  ]),
+  kb_4: buildKbPreviewNodes([
+    { id: 'sf5', name: '分享资料整理.pdf', format: 'pdf' },
+    { id: 'sf6', name: '参考笔记.md', format: 'md', type: 'note', content: '# 参考笔记\n\n共享资料摘要。' },
+  ]),
+};
+
+function resolveKbNodes(kbId: string, kbType: string, initialNodes?: FileNode[]) {
+  if (initialNodes) return initialNodes;
+  if (KB_NODES_BY_ID[kbId]) return KB_NODES_BY_ID[kbId];
+  if (kbType === 'public') return MOCK_PUBLIC_NODES;
+  return INITIAL_NODES;
+}
+
 function generateId() {
   return Math.random().toString(36).substring(2, 9);
+}
+
+function resolvePublishStatus(kbType: string, publishStatus?: FileNode['publishStatus']) {
+  if (publishStatus) return publishStatus;
+  return kbType === 'public' ? 'approved' : 'published';
 }
 
 // --- Helpers ---
@@ -73,6 +147,19 @@ function getFileIcon(node: FileNode, className = "w-4 h-4") {
   if (node.type === 'video') return <FileVideo className={cn(className, "text-indigo-500 fill-indigo-50")} />;
   if (node.type === 'note') return <FileText className={cn(className, "text-indigo-600")} />;
   return <FileIcon className={cn(className, "text-slate-400")} />;
+}
+
+function isZipOnlyPreviewBlocked(node: FileNode) {
+  return (node.format || "").toLowerCase() === "zip";
+}
+
+function getPreviewFormatLabel(node: FileNode) {
+  if (node.format) return node.format.toUpperCase();
+  if (node.type === "spreadsheet") return "XLSX";
+  if (node.type === "presentation") return "PPTX";
+  if (node.type === "document") return "DOC";
+  if (node.type === "video") return "VIDEO";
+  return "FILE";
 }
 
 function StatusBadge({ type, status }: { type: 'governance' | 'preprocess', status: string }) {
@@ -103,6 +190,31 @@ function PublishStatusBadge({ status }: { status: 'pending_audit' | 'approved' |
   return <span className={cn(baseClasses, "bg-slate-50 border-slate-200 text-slate-500")}><div className="w-1.5 h-1.5 rounded-full bg-slate-400" /> 未知</span>;
 }
 
+function getPublicListPublishStatus(node: FileNode): FileNode['publishStatus'] {
+  if (node.type === 'folder') return 'approved';
+  if (node.publishStatus === 'offline' || node.isOfflineDraft) return 'approved';
+  return node.publishStatus ?? 'approved';
+}
+
+function getPublicFilePublishStatus(node: FileNode): FileNode['publishStatus'] | null {
+  if (node.type === 'folder') return null;
+  if (node.publishStatus === 'offline' || node.isOfflineDraft) return 'approved';
+  return node.publishStatus ?? 'approved';
+}
+
+function isPublicOfflinePending(node: FileNode): boolean {
+  return !!node.isOfflineDraft || node.publishStatus === 'offline';
+}
+
+const PUBLIC_ACTION_LINK =
+  "text-sm font-medium bg-transparent border-0 p-0 cursor-pointer transition-colors whitespace-nowrap";
+const PUBLIC_ACTION_LINK_PRIMARY =
+  `${PUBLIC_ACTION_LINK} text-blue-600 hover:text-blue-700 hover:underline underline-offset-2`;
+const PUBLIC_ACTION_LINK_MUTED =
+  `${PUBLIC_ACTION_LINK} text-slate-500 hover:text-slate-700 hover:underline underline-offset-2`;
+const PUBLIC_ACTION_LINK_DANGER =
+  `${PUBLIC_ACTION_LINK} text-rose-600 hover:text-rose-700 hover:underline underline-offset-2`;
+
 export function KnowledgeBaseDetail({ 
   kbId, 
   kbName, 
@@ -110,12 +222,16 @@ export function KnowledgeBaseDetail({
   onBack,
   initialNodes,
   initialRole = 'member',
+  teamMemberPerm: teamMemberPermProp,
   extraHeaderActions,
   hideHeader = false,
   initialFileId,
   isArchiveView = false,
+  sharePermission: sharePermissionProp,
   onUploadClick,
   fileListDisplayConfig,
+  onNodesChange,
+  exportControlEnabled = false,
 }: { 
   kbId: string, 
   kbName: string, 
@@ -123,24 +239,29 @@ export function KnowledgeBaseDetail({
   onBack: () => void,
   initialNodes?: FileNode[],
   initialRole?: 'member' | 'admin',
+  teamMemberPerm?: TeamMemberPerm,
   extraHeaderActions?: React.ReactNode,
   hideHeader?: boolean,
   initialFileId?: string,
   isArchiveView?: boolean,
+  sharePermission?: SharePermission,
   onUploadClick?: () => boolean | void,
   fileListDisplayConfig?: import("../types").FileListDisplayConfig,
+  onNodesChange?: (nodes: FileNode[]) => void,
+  /** 团队知识库：开启导出控制时隐藏批量下载 */
+  exportControlEnabled?: boolean,
 }) {
-  const [nodes, setNodes] = useState<FileNode[]>(() => {
-    if (initialNodes) return initialNodes;
-    if (kbType === 'public') return MOCK_PUBLIC_NODES;
-    return INITIAL_NODES;
-  });
+  const [nodes, setNodes] = useState<FileNode[]>(() => resolveKbNodes(kbId, kbType, initialNodes));
 
   useEffect(() => {
-    if (initialNodes) {
-      setNodes(initialNodes);
+    setNodes(resolveKbNodes(kbId, kbType, initialNodes));
+  }, [kbId, kbType, initialNodes]);
+
+  useEffect(() => {
+    if (kbType === 'public' && onNodesChange) {
+      onNodesChange(nodes);
     }
-  }, [kbId, initialNodes]);
+  }, [nodes, kbType, onNodesChange]);
 
   const fileListExtraColumns = useMemo(() => {
     if (!fileListDisplayConfig) return [];
@@ -199,11 +320,62 @@ export function KnowledgeBaseDetail({
     return <span className="text-sm text-slate-600">{node.fileMetadata?.[colKey] || '-'}</span>;
   };
   const [teamRole, setTeamRole] = useState<'member' | 'admin'>(initialRole);
-  const canWrite = kbType === 'personal_own' || ((kbType === 'team' || kbType === 'public') && teamRole === 'admin');
+  const teamMemberPerm: TeamMemberPerm =
+    teamMemberPermProp ?? (teamRole === 'admin' ? '可管理' : '可编辑');
+  const canWrite =
+    !isArchiveView &&
+    (kbType === 'personal_own' ||
+    (kbType === 'team' && (teamMemberPerm === '可管理' || teamMemberPerm === '可编辑')) ||
+    (kbType === 'public' && teamRole === 'admin'));
+
+  useEffect(() => {
+    if (!isArchiveView) return;
+    setSidePanel('none');
+    setIsEditingDoc(false);
+    setShowDownloadMenu(false);
+    setMenuNodeId(null);
+  }, [isArchiveView]);
+
+  const isOthersShared = isOthersSharedKb(kbType);
+  const resolvedSharePermission: SharePermission = sharePermissionProp ?? 'view';
+  const sharedCanDownload = !isOthersShared || canSharedDownload(resolvedSharePermission);
+  const sharedCanComment = !isOthersShared || canSharedComment(resolvedSharePermission);
+
+  const showBatchDownload =
+    !isArchiveView &&
+    ((kbType === 'personal_own' && sharedCanDownload) ||
+      (kbType === 'team' && !exportControlEnabled) ||
+      (kbType === 'personal' && sharedCanDownload));
+
+  useEffect(() => {
+    if (!showBatchDownload) {
+      setBulkDownloadMode(false);
+      setSelectedDownloadIds(new Set());
+    }
+  }, [showBatchDownload]);
+
+  const canEditGovernanceForFile = (node: FileNode) => {
+    if (kbType === 'personal_own') return true;
+    if (kbType === 'team') {
+      return canProcessGovernance(teamMemberPerm, node.creator, CURRENT_TEAM_USER);
+    }
+    return kbType === 'public' && teamRole === 'admin';
+  };
+
+  const canViewGovernanceForFile = (node: FileNode) => {
+    if (node.type === 'folder' || node.type === 'note') return false;
+    if (kbType === 'personal_own') return true;
+    if (kbType === 'team') return canViewGovernance(teamMemberPerm);
+    return true;
+  };
+
+  const openGovernanceModal = (node: FileNode) => {
+    setModal({ type: 'preprocess', payload: node });
+  };
 
   const visibleNodes = useMemo(() => {
     if (kbType === 'public' && teamRole === 'member') {
-      return nodes.filter(n => n.type === 'folder' || n.publishStatus === 'published');
+      return nodes.filter(n => n.type === 'folder' || resolvePublishStatus(kbType, n.publishStatus) === 'published');
     }
     return nodes;
   }, [nodes, kbType, teamRole]);
@@ -213,6 +385,12 @@ export function KnowledgeBaseDetail({
   const [listSearch, setListSearch] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['root', 'f1']));
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [bulkDownloadMode, setBulkDownloadMode] = useState(false);
+  const [selectedDownloadIds, setSelectedDownloadIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setSelectedDownloadIds(new Set());
+  }, [currentFolderId, listSearch]);
 
   // Modal State
   const [modal, setModal] = useState<{
@@ -222,6 +400,13 @@ export function KnowledgeBaseDetail({
   const [modalInput, setModalInput] = useState('');
   const [editContent, setEditContent] = useState('');
   const [publishAsRequired, setPublishAsRequired] = useState(false);
+  const [publishAllowDownload, setPublishAllowDownload] = useState(true);
+
+  useEffect(() => {
+    if (modal.type !== 'publish_confirm' || !modal.payload) return;
+    setPublishAsRequired(!!modal.payload.isRequiredRead);
+    setPublishAllowDownload(modal.payload.downloadable !== false);
+  }, [modal.type, modal.payload?.id]);
 
   // Dropdown Menu State
   const [menuNodeId, setMenuNodeId] = useState<string | null>(null);
@@ -235,7 +420,7 @@ export function KnowledgeBaseDetail({
   useEffect(() => {
     if (initialFileId) {
       const doc = nodes.find(n => n.id === initialFileId);
-      if (doc) {
+      if (doc && doc.type !== 'folder') {
         setDetailDocId(initialFileId);
         setViewMode('detail');
         setEditContent(doc.content || '');
@@ -249,6 +434,9 @@ export function KnowledgeBaseDetail({
           curr = parent as FileNode;
         }
         setExpandedFolders(newExpanded);
+      } else {
+        setDetailDocId(null);
+        setViewMode('list');
       }
     }
   }, [initialFileId, nodes]);
@@ -510,6 +698,10 @@ export function KnowledgeBaseDetail({
   }, []);
 
   const handleRetryGovernance = (doc: FileNode) => {
+    if (!canEditGovernanceForFile(doc)) {
+      showToast('仅可管理权限用户可处理全部文件治理；可上传用户仅可处理自己上传的文件');
+      return;
+    }
     setNodes(prev => prev.map(n => n.id === doc.id ? {
       ...n,
       governanceStatus: 'running',
@@ -521,6 +713,10 @@ export function KnowledgeBaseDetail({
   };
 
   const handleAddComment = () => {
+    if (!sharedCanComment) {
+      showToast('当前共享权限不支持发表评论');
+      return;
+    }
     if (!newComment.trim()) return;
     const commentText = newComment.trim();
     const commentObj = {
@@ -763,6 +959,46 @@ export function KnowledgeBaseDetail({
     ? currentChildren.filter(n => n.name.toLowerCase().includes(listSearch.trim().toLowerCase()))
     : currentChildren;
 
+  const selectableDownloadFiles = filteredChildren.filter((n) => n.type !== 'folder');
+  const allSelectableSelected =
+    selectableDownloadFiles.length > 0 &&
+    selectableDownloadFiles.every((n) => selectedDownloadIds.has(n.id));
+
+  const toggleSelectAllDownloads = () => {
+    if (allSelectableSelected) {
+      setSelectedDownloadIds(new Set());
+    } else {
+      setSelectedDownloadIds(new Set(selectableDownloadFiles.map((n) => n.id)));
+    }
+  };
+
+  const handleBatchDownload = () => {
+    if (selectedDownloadIds.size === 0) {
+      showToast('请先选择要下载的文件');
+      return;
+    }
+    const names = nodes
+      .filter((n) => selectedDownloadIds.has(n.id))
+      .map((n) => n.name);
+    showToast(`正在打包下载已选的 ${names.length} 个文件…`);
+    setBulkDownloadMode(false);
+    setSelectedDownloadIds(new Set());
+  };
+
+  const exitBulkDownloadMode = () => {
+    setBulkDownloadMode(false);
+    setSelectedDownloadIds(new Set());
+  };
+
+  const toggleDownloadSelection = (id: string) => {
+    setSelectedDownloadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const getAncestors = (folderId: string): FileNode[] => {
     const output = [];
     let curr = visibleNodes.find(n => n.id === folderId);
@@ -783,6 +1019,11 @@ export function KnowledgeBaseDetail({
   };
 
   const executeAction = () => {
+    if (isOthersShared && ['rename', 'delete', 'move', 'copy', 'edit_note'].includes(modal.type)) {
+      showToast('他人共享知识库不支持编辑类操作');
+      closeModal();
+      return;
+    }
     if (!canWrite && ['create_folder', 'create_note', 'rename', 'delete', 'move', 'copy', 'edit_note'].includes(modal.type)) {
       showToast('操作锁定：当前订阅库限制为只读，无权执行修改或写入');
       closeModal();
@@ -832,8 +1073,13 @@ export function KnowledgeBaseDetail({
             updatedAt: new Date().toISOString(),
             governanceStatus: 'success',
             preprocessStatus: 'success',
+            creator: kbType === 'public' ? '管理员' : undefined,
+            publishStatus: kbType === 'public' ? 'approved' : undefined,
             content: '# 新建笔记\n\n开始编写内容...'
           }]);
+          if (kbType === 'public') {
+            showToast('笔记已创建，处于待发布状态，请手动正式发布');
+          }
         }
         break;
       case 'rename':
@@ -900,8 +1146,14 @@ export function KnowledgeBaseDetail({
         size: file.size,
         updatedAt: new Date().toISOString(),
         governanceStatus: 'running',
-        preprocessStatus: 'running'
+        preprocessStatus: 'running',
+        creator: kbType === 'team' ? CURRENT_TEAM_USER : kbType === 'public' ? '管理员' : undefined,
+        publishStatus: kbType === 'public' ? 'approved' : undefined,
       }]);
+
+      if (kbType === 'public') {
+        showToast('文件已上传，处于待发布状态，请手动正式发布');
+      }
 
       startAutoGovernanceForFile(newId, file.name, ext || '', file.size);
     }
@@ -909,6 +1161,10 @@ export function KnowledgeBaseDetail({
   };
 
   const handleRowClick = (node: FileNode) => {
+    if (bulkDownloadMode && node.type !== 'folder') {
+      toggleDownloadSelection(node.id);
+      return;
+    }
     if (node.type === 'folder') {
       setCurrentFolderId(node.id);
     } else {
@@ -1005,7 +1261,7 @@ export function KnowledgeBaseDetail({
             
             <button 
               onClick={(e) => { e.stopPropagation(); setMenuNodeId(menuNodeId === `sidebar-${folder.id}` ? null : `sidebar-${folder.id}`); }}
-              className={cn("w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 transition-opacity ml-1", menuNodeId === `sidebar-${folder.id}` ? "opacity-100" : "opacity-0 group-hover:opacity-100")}
+              className={cn("w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 transition-opacity ml-1", menuNodeId === `sidebar-${folder.id}` ? "opacity-100" : "opacity-0 group-hover:opacity-100", (isOthersShared || isArchiveView) && "hidden")}
             >
               <MoreHorizontal className="w-3.5 h-3.5 text-slate-500" />
             </button>
@@ -1013,7 +1269,7 @@ export function KnowledgeBaseDetail({
             {menuNodeId === `sidebar-${folder.id}` && (
               <>
                 <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); closeMenu(); }} />
-                <div className="absolute left-[260px] w-40 bg-white border border-slate-200 rounded-lg shadow-xl z-20 py-1" onClick={(e) => e.stopPropagation()}>
+                <div className="absolute left-[260px] w-40 glass-panel rounded-lg z-20 py-1" onClick={(e) => e.stopPropagation()}>
                   {canWrite && (
                     <>
                       <button className="w-full px-3 py-2 text-sm text-left text-slate-700 hover:bg-slate-50 flex items-center gap-1 border-0 bg-transparent cursor-pointer font-medium" 
@@ -1069,15 +1325,17 @@ export function KnowledgeBaseDetail({
   };
 
   const detailDoc = nodes.find(n => n.id === detailDocId);
+  const detailCanDownload =
+    sharedCanDownload && (kbType !== "public" || detailDoc?.downloadable !== false);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-hidden relative text-slate-800">
+    <div className="flex-1 flex flex-col h-full overflow-hidden relative text-slate-800">
       
       {viewMode === 'list' && (
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Header Breadcrumbs */}
           {!hideHeader && (
-            <header className="h-14 px-6 flex items-center gap-3 border-b border-slate-200 bg-white shrink-0 shadow-sm z-10">
+            <header className="h-14 px-6 flex items-center gap-3 glass-header shrink-0 z-10">
               <button onClick={onBack} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors">
                 <ArrowLeft className="w-4 h-4" />
               </button>
@@ -1097,7 +1355,7 @@ export function KnowledgeBaseDetail({
               </div>
               
               {extraHeaderActions && (
-                <div className="flex items-center gap-1 shrink-0 border-l border-slate-200 pl-4 ml-auto">
+                <div className="flex items-center gap-1 shrink-0 border-l border-white/40 pl-4 ml-auto">
                   {extraHeaderActions}
                 </div>
               )}
@@ -1107,54 +1365,16 @@ export function KnowledgeBaseDetail({
           <div className="flex-1 flex overflow-hidden">
         
         {/* Left Tree sidebar */}
-        <div className="w-[260px] bg-white border-r border-slate-200 flex flex-col shrink-0">
-          <div className="p-3 shrink-0 border-b border-slate-100">
+        <div className="w-[260px] glass-sidebar-panel flex flex-col shrink-0">
+          <div className="p-3 shrink-0 border-b border-white/40">
             <div className="text-sm font-medium uppercase text-slate-400 tracking-widest pl-2 mb-2">目录结构</div>
             {renderTreeFolders(null)}
           </div>
         </div>
 
         {/* Right Content */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-white">
-          {/* Custom Permission status banner */}
-          {!isArchiveView && kbType !== 'team' && kbType !== 'public' && (
-            <div className={cn(
-              "px-6 py-3 border-b flex flex-col md:flex-row md:items-center justify-between gap-3 text-sm shrink-0 select-none",
-              kbType === 'personal_own' && "bg-blue-50/50 border-blue-105 text-blue-800",
-              kbType === 'personal' && "bg-amber-50/40 border-amber-100 text-amber-900",
-              kbType === 'team' && "bg-indigo-50/40 border-indigo-150 text-indigo-900",
-              kbType === 'public' && "bg-emerald-50/40 border-emerald-100 text-emerald-950"
-            )}>
-              <div className="flex items-center gap-1.5 font-medium">
-              <span className={cn(
-                "w-2 h-2 rounded-full ring-2 shrink-0",
-                kbType === 'personal_own' ? "bg-blue-500 ring-blue-100 animate-pulse" :
-                kbType === 'personal' ? "bg-amber-500 ring-amber-100" :
-                kbType === 'team' ? "bg-indigo-500 ring-indigo-100" : "bg-emerald-500 ring-emerald-100"
-              )} />
-              <div className="leading-relaxed">
-                {kbType === 'personal_own' && (
-                  <span>【个人创建】您是此知识库所有者，拥有全部读写、目录调整及共享授权配置权限。</span>
-                )}
-                {kbType === 'personal' && (
-                  <span>【个人来源 ─ 订阅】他人共享协作知识库。按共享规则限制为<b>【只读】</b>，不能新建文件/目录、拖拽重组或修改共享配置。</span>
-                )}
-                {kbType === 'team' && (
-                  <span>
-                    【团队来源 ─ 订阅】专属团队口径。当前为 <b>团队管理员</b> ── 您已开放可上传、编辑、重组目录及高阶安全治理全量管理权限。
-                  </span>
-                )}
-                {kbType === 'public' && (
-                  <span>
-                    【公共来源 ─ 订阅】组织全局发布。当前为 <b>空间超级管理员</b> ── 作为系统管理员，您拥有全量维护、脱敏归档及入库发布审核通过权。
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          )}
-
-          <div className="p-3 border-b border-slate-100 flex justify-between items-center bg-white shrink-0 gap-3">
+        <div className="flex-1 flex flex-col overflow-hidden glass-content">
+          <div className="p-3 border-b border-white/40 flex justify-between items-center shrink-0 gap-3">
              <div className="relative max-w-sm w-full">
                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                <input 
@@ -1162,22 +1382,66 @@ export function KnowledgeBaseDetail({
                  placeholder="在当前目录下检索..." 
                  value={listSearch}
                  onChange={(e) => setListSearch(e.target.value)}
-                 className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 transition-shadow"
+                 className="w-full pl-9 pr-4 py-2 glass-input rounded-lg text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 transition-shadow"
                />
              </div>
              
-             <div className="flex gap-1">
-               {canWrite ? (
+             <div className="flex gap-1 shrink-0 items-center">
+               {showBatchDownload && bulkDownloadMode ? (
+                 <>
+                   <span className="text-sm font-medium text-slate-600 mr-1 whitespace-nowrap">
+                     已选 {selectedDownloadIds.size} 个
+                   </span>
+                   <button
+                     type="button"
+                     onClick={toggleSelectAllDownloads}
+                     disabled={selectableDownloadFiles.length === 0}
+                     className="px-3 h-8 text-sm font-medium text-slate-600 glass-card rounded-lg hover:bg-white/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                   >
+                     {allSelectableSelected ? '取消全选' : '全选'}
+                   </button>
+                   <button
+                     type="button"
+                     onClick={handleBatchDownload}
+                     disabled={selectedDownloadIds.size === 0}
+                     className="px-3 h-8 text-sm font-medium text-white bg-blue-600 border border-blue-600 rounded-lg shadow-sm hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                   >
+                     <Download className="w-3.5 h-3.5" /> 打包下载
+                   </button>
+                   <button
+                     type="button"
+                     onClick={exitBulkDownloadMode}
+                     className="px-3 h-8 text-sm font-medium text-slate-600 glass-card rounded-lg hover:bg-white/50"
+                   >
+                     取消
+                   </button>
+                 </>
+               ) : showBatchDownload ? (
+                 <button
+                   type="button"
+                   onClick={() => {
+                     if (selectableDownloadFiles.length === 0) {
+                       showToast('当前目录没有可下载的文件');
+                       return;
+                     }
+                     setBulkDownloadMode(true);
+                   }}
+                   className="px-3 h-8 text-sm font-medium text-slate-700 glass-card rounded-lg hover:bg-white/50 flex items-center gap-1.5"
+                 >
+                   <Download className="w-3.5 h-3.5" /> 批量下载
+                 </button>
+               ) : null}
+               {canWrite && !bulkDownloadMode ? (
                  <>
                    <button 
                      onClick={() => setModal({ type: 'create_folder' })}
-                     className="px-3 h-8 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg shadow-sm hover:bg-slate-50 flex items-center gap-1.5"
+                     className="px-3 h-8 text-sm font-medium text-slate-700 glass-card rounded-lg hover:bg-white/50 flex items-center gap-1.5"
                    >
                      <Folder className="w-3.5 h-3.5" /> 新建文件夹
                    </button>
                    <button 
                      onClick={() => setModal({ type: 'create_note' })}
-                     className="px-3 h-8 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg shadow-sm hover:bg-slate-50 flex items-center gap-1.5"
+                     className="px-3 h-8 text-sm font-medium text-slate-700 glass-card rounded-lg hover:bg-white/50 flex items-center gap-1.5"
                    >
                      <Plus className="w-3.5 h-3.5" /> 新建笔记
                    </button>
@@ -1192,13 +1456,15 @@ export function KnowledgeBaseDetail({
                      <UploadCloud className="w-3.5 h-3.5" /> 上传文件
                    </button>
                  </>
-               ) : (
-                 <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-400 text-[11.5px] font-medium select-none">
-                   <Lock className="w-3 h-3 text-slate-400" /> 当前权限只读
-                 </div>
-               )}
+               ) : null}
              </div>
           </div>
+
+          {showBatchDownload && bulkDownloadMode && (
+            <div className="px-4 py-2 bg-blue-50/80 border-b border-blue-100 text-sm text-blue-800 font-medium shrink-0">
+              勾选需要打包下载的文件，支持多选；文件夹不可选。
+            </div>
+          )}
 
           <div className="flex-1 overflow-auto">
             {filteredChildren.length === 0 ? (
@@ -1208,13 +1474,25 @@ export function KnowledgeBaseDetail({
                  </div>
                  <h3 className="text-sm font-medium text-slate-700 mb-1">{listSearch.trim() ? '未找到匹配项' : '文件夹为空'}</h3>
                  <p className="text-sm font-medium text-slate-400 max-w-sm">
-                   {listSearch.trim() ? '请尝试其他关键词，或清空检索条件。' : '您可以点击右上角按钮新建文件夹、笔记，或直接上传文件。'}
+                   {listSearch.trim() ? '请尝试其他关键词，或清空检索条件。' : isArchiveView ? '该文件夹暂无内容。' : '您可以点击右上角按钮新建文件夹、笔记，或直接上传文件。'}
                  </p>
                </div>
             ) : (
               <table className="w-full text-left min-w-[960px]">
-                <thead className="sticky top-0 bg-white/95 backdrop-blur z-10 after:absolute after:bottom-0 after:left-0 after:right-0 after:border-b after:border-slate-100">
+                <thead className="sticky top-0 bg-white/45 backdrop-blur-md z-10 after:absolute after:bottom-0 after:left-0 after:right-0 after:border-b after:border-white/40">
                   <tr className="text-sm font-medium text-slate-500">
+                    {showBatchDownload && bulkDownloadMode && (
+                      <th className="py-3 px-4 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          checked={allSelectableSelected}
+                          disabled={selectableDownloadFiles.length === 0}
+                          onChange={toggleSelectAllDownloads}
+                          aria-label="全选当前目录文件"
+                        />
+                      </th>
+                    )}
                     <th className="py-3 px-6 font-medium min-w-[200px]">文件名称</th>
                     {fileListExtraColumns.map((col) => (
                       <th key={col.key} className={cn("py-3 px-4 font-medium", col.headerClassName)}>{col.label}</th>
@@ -1232,19 +1510,37 @@ export function KnowledgeBaseDetail({
                     <th className="py-3 px-4 font-medium whitespace-nowrap">创建者</th>
                     <th className="py-3 px-4 font-medium whitespace-nowrap">大小</th>
                     <th className="py-3 px-4 font-medium whitespace-nowrap">更新时间</th>
-                    {kbType === 'public' && teamRole === 'admin' && (
-                      <th className="py-3 px-4 font-medium text-center">状态管理</th>
+                    {kbType === 'public' && teamRole === 'admin' && !isArchiveView && (
+                      <th className="py-3 px-4 font-medium text-center min-w-[140px]">操作</th>
                     )}
+                    {!isArchiveView && (
                     <th className="py-3 px-4 w-12 text-center"></th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {filteredChildren.map(node => (
                     <tr 
                       key={node.id} 
-                      className="group hover:bg-slate-50 transition-colors cursor-pointer"
+                      className={cn(
+                        "group hover:bg-white/25 transition-colors cursor-pointer",
+                        bulkDownloadMode && node.type !== 'folder' && selectedDownloadIds.has(node.id) && "bg-blue-50/50"
+                      )}
                       onClick={() => handleRowClick(node)}
                     >
+                      {showBatchDownload && bulkDownloadMode && (
+                        <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          {node.type !== 'folder' ? (
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              checked={selectedDownloadIds.has(node.id)}
+                              onChange={() => toggleDownloadSelection(node.id)}
+                              aria-label={`选择 ${node.name}`}
+                            />
+                          ) : null}
+                        </td>
+                      )}
                       <td className="py-3.5 px-6">
                         <div className="flex items-center gap-3">
                           {getFileIcon(node, "w-5 h-5")}
@@ -1261,7 +1557,13 @@ export function KnowledgeBaseDetail({
                       {isArchiveView ? (
                         <td className="py-3.5 px-4"><PublishStatusBadge status="archived" /></td>
                       ) : kbType === 'public' ? (
-                        <td className="py-3.5 px-4"><PublishStatusBadge status={node.publishStatus || 'published'} /></td>
+                        <td className="py-3.5 px-4">
+                          {node.type === 'folder' ? (
+                            <span className="text-sm text-slate-300">—</span>
+                          ) : (
+                            <PublishStatusBadge status={getPublicListPublishStatus(node)} />
+                          )}
+                        </td>
                       ) : (
                         <td className="py-3.5 px-4"><StatusBadge type="governance" status={node.governanceStatus} /></td>
                       )}
@@ -1277,90 +1579,123 @@ export function KnowledgeBaseDetail({
                       <td className="py-3.5 px-4 text-sm font-semibold text-slate-500 text-right">
                         {format(new Date(node.updatedAt), 'MM-dd HH:mm')}
                       </td>
-                      {kbType === 'public' && teamRole === 'admin' && (
+                      {kbType === 'public' && teamRole === 'admin' && !isArchiveView && (
                         <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center gap-1.5 justify-center">
-                            {node.publishStatus === 'pending_audit' && (
-                              <button 
-                                onClick={() => {
-                                  setNodes(nodes.map(n => n.id === node.id ? { ...n, publishStatus: 'approved' } : n));
-                                  showToast('审核通过，文件已进入待发布状态');
-                                }}
-                                className="px-2 py-0.5 rounded text-sm bg-blue-600 text-white hover:bg-blue-700 transition-all cursor-pointer font-medium shrink-0 shadow-sm border-0"
-                              >
-                                审核通过
-                              </button>
-                            )}
-                            {node.publishStatus === 'approved' && (
-                              <button 
-                                onClick={() => {
-                                  setModal({ type: 'publish_confirm', payload: node });
-                                }}
-                                className="px-2 py-0.5 rounded text-sm bg-blue-600 text-white hover:bg-blue-700 transition-all cursor-pointer font-medium shrink-0 shadow-sm border-0"
-                              >
-                                正式发布
-                              </button>
-                            )}
-                            {(node.publishStatus === 'published' || !node.publishStatus) && (
-                              <button 
-                                onClick={() => {
-                                  setNodes(nodes.map(n => n.id === node.id ? { ...n, publishStatus: 'offline' } : n));
-                                  showToast('文件已撤回下线');
-                                }}
-                                className="px-2 py-0.5 rounded text-sm bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition-all cursor-pointer font-medium shrink-0 shadow-sm"
-                              >
-                                下线文件
-                              </button>
-                            )}
-                            {node.publishStatus === 'offline' && (
-                              <>
-                                <button 
-                                  onClick={() => {
-                                    setModal({ type: 'publish_confirm', payload: node });
-                                  }}
-                                  className="px-2 py-0.5 rounded text-sm bg-blue-600 text-white hover:bg-blue-700 transition-all cursor-pointer font-medium shrink-0 shadow-sm border-0"
-                                >
-                                  再次发布
-                                </button>
-                                <button 
-                                  onClick={() => {
-                                    setNodes(nodes.map(n => n.id === node.id ? { ...n, publishStatus: 'archived' } : n));
-                                    showToast('文件已移动至归档中心');
-                                  }}
-                                  className="px-2 py-0.5 rounded text-sm bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 transition-all cursor-pointer font-medium shrink-0 shadow-sm"
-                                >
-                                  归档
-                                </button>
-                              </>
-                            )}
-                            {node.publishStatus === 'archived' && (
-                               <span className="text-sm font-medium text-slate-400 italic">已归档</span>
-                            )}
+                          <div className="flex items-center gap-3 justify-center flex-wrap min-w-[100px]">
+                            {(() => {
+                              const pubStatus = getPublicFilePublishStatus(node);
+                              if (!pubStatus) {
+                                return <span className="text-sm text-slate-300">—</span>;
+                              }
+                              if (pubStatus === 'pending_audit') {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setNodes(nodes.map(n => n.id === node.id ? { ...n, publishStatus: 'approved' } : n));
+                                      showToast('审核通过，文件已进入待发布状态');
+                                    }}
+                                    className={PUBLIC_ACTION_LINK_PRIMARY}
+                                  >
+                                    审核通过
+                                  </button>
+                                );
+                              }
+                              if (pubStatus === 'approved') {
+                                const offlinePending = isPublicOfflinePending(node);
+                                return (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setModal({ type: 'publish_confirm', payload: node });
+                                      }}
+                                      className={PUBLIC_ACTION_LINK_PRIMARY}
+                                    >
+                                      {offlinePending ? '再次发布' : '发布'}
+                                    </button>
+                                    {offlinePending && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setNodes(nodes.map(n => n.id === node.id ? { ...n, publishStatus: 'archived', isOfflineDraft: false } : n));
+                                          showToast('文件已移动至归档中心');
+                                        }}
+                                        className={PUBLIC_ACTION_LINK_MUTED}
+                                      >
+                                        归档
+                                      </button>
+                                    )}
+                                  </>
+                                );
+                              }
+                              if (pubStatus === 'published' && !isPublicOfflinePending(node)) {
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setNodes(nodes.map(n => n.id === node.id ? { ...n, publishStatus: 'approved', isOfflineDraft: true } : n));
+                                      showToast('文件已下线，已进入待发布状态');
+                                    }}
+                                    className={PUBLIC_ACTION_LINK_DANGER}
+                                  >
+                                    下线
+                                  </button>
+                                );
+                              }
+                              if (pubStatus === 'archived') {
+                                return <span className="text-sm font-medium text-slate-400">已归档</span>;
+                              }
+                              return null;
+                            })()}
                           </div>
                         </td>
                       )}
+                      {!isArchiveView && (
                       <td className="py-3.5 px-4 text-center">
                          <div className="relative">
                            <button 
                              onClick={(e) => { e.stopPropagation(); setMenuNodeId(menuNodeId === `table-${node.id}` ? null : `table-${node.id}`); }}
-                             className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors opacity-0 group-hover:opacity-100"
+                             className={cn(
+                               "w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors opacity-0 group-hover:opacity-100",
+                               isOthersShared && node.type === 'folder' && "hidden"
+                             )}
                            >
                              <MoreVertical className="w-4 h-4" />
                            </button>
                            {menuNodeId === `table-${node.id}` && (
                              <>
                                <div className="fixed inset-0 z-20" onClick={(e) => { e.stopPropagation(); closeMenu(); }} />
-                               <div className="absolute right-full top-0 mr-1 w-36 bg-white border border-slate-200 rounded-lg shadow-xl z-30 py-1" onClick={(e) => e.stopPropagation()}>
-                                 {['document', 'presentation', 'spreadsheet', 'archive'].includes(node.type) && (
+                               <div className="absolute right-full top-0 mr-1 w-36 glass-panel rounded-lg z-30 py-1" onClick={(e) => e.stopPropagation()}>
+                                 {isOthersShared ? (
+                                   node.type !== 'folder' && (
+                                     <button className="w-full px-3 py-2 text-sm font-medium text-left text-slate-700 hover:bg-slate-50 flex items-center gap-1" 
+                                       onClick={() => { 
+                                         if (!node.isFavorited) {
+                                           setModal({ type: 'select_favorite_folder', payload: node });
+                                         } else {
+                                           setNodes(nodes.map(n => n.id === node.id ? { ...n, isFavorited: false } : n));
+                                           showToast('已取消收藏');
+                                         }
+                                         closeMenu(); 
+                                       }}>
+                                       <Star className={cn("w-3.5 h-3.5", node.isFavorited && "fill-amber-400 text-amber-400")} /> {node.isFavorited ? '取消收藏' : '添加收藏'}
+                                     </button>
+                                   )
+                                 ) : (
+                                   <>
+                                 {['document', 'presentation', 'spreadsheet', 'archive'].includes(node.type) && canViewGovernanceForFile(node) && (
                                    <button className="w-full px-3 py-2 text-sm font-medium text-left text-blue-600 hover:bg-slate-50 flex items-center gap-1"
-                                     onClick={() => { setModal({ type: 'preprocess', payload: node }); closeMenu(); }}>
+                                     onClick={() => { openGovernanceModal(node); closeMenu(); }}>
                                      <Bot className="w-3.5 h-3.5" /> 治理结果
                                    </button>
                                  )}
+                                 {canWrite && (
                                  <button className="w-full px-3 py-2 text-sm font-medium text-left text-slate-700 hover:bg-slate-50 flex items-center gap-1"
                                    onClick={() => { setModalInput(node.name); setModal({ type: 'rename', payload: node }); closeMenu(); }}>
                                    <Edit2 className="w-3.5 h-3.5" /> 重命名
                                  </button>
+                                 )}
                                  <div className="h-px bg-slate-100 my-1"/>
                                  <button className="w-full px-3 py-2 text-sm font-medium text-left text-slate-700 hover:bg-slate-50 flex items-center gap-1" 
                                    onClick={() => { 
@@ -1374,6 +1709,8 @@ export function KnowledgeBaseDetail({
                                    }}>
                                    <Star className={cn("w-3.5 h-3.5", node.isFavorited && "fill-amber-400 text-amber-400")} /> {node.isFavorited ? '取消收藏' : '添加收藏'}
                                  </button>
+                                 {canWrite && (
+                                 <>
                                  <button className="w-full px-3 py-2 text-sm font-medium text-left text-slate-700 hover:bg-slate-50 flex items-center gap-1"
                                    onClick={() => { setModal({ type: 'move', payload: node }); closeMenu(); }}>
                                    <Move className="w-3.5 h-3.5" /> 移动
@@ -1404,16 +1741,20 @@ export function KnowledgeBaseDetail({
                                      </>
                                     )
                                  )}
-                                  <div className="h-px bg-slate-100 my-1"/>
                                   <button className="w-full px-3 py-2 text-sm font-medium text-left text-rose-600 hover:bg-rose-50 flex items-center gap-1"
                                     onClick={() => { setModal({ type: 'delete', payload: node }); closeMenu(); }}>
                                     <Trash2 className="w-3.5 h-3.5" /> 彻底删除
                                   </button>
+                                 </>
+                                 )}
+                                   </>
+                                 )}
                                 </div>
                               </>
                             )}
                           </div>
                       </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -1426,14 +1767,15 @@ export function KnowledgeBaseDetail({
       )}
 
       {viewMode === 'detail' && detailDoc && (
-        <div className="flex-1 flex h-full bg-slate-100 overflow-hidden relative">
+        <div className="flex-1 flex h-full overflow-hidden relative">
            {/* Detailed View Main */}
-           <section className="flex-1 flex flex-col min-w-0 bg-white relative shadow-sm border-r border-slate-200">
-             <header className="h-14 px-6 flex items-center justify-between border-b border-slate-200 shrink-0 bg-white">
+           <section className="flex-1 flex flex-col min-w-0 glass-content relative border-r border-white/40">
+             <header className="h-14 px-6 flex items-center justify-between border-b border-white/40 shrink-0 glass-header">
                <div className="flex items-center gap-3 min-w-0">
                  <button onClick={() => { setViewingVersionId(null); if (initialFileId) { onBack(); } else { setViewMode('list'); } }} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 shadow-sm border border-slate-200/50"><ChevronRight className="w-4 h-4 rotate-180" /></button>
                  <div className="text-sm font-medium text-slate-500 truncate flex items-center gap-1">
                    {kbName} <ChevronRight className="w-3.5 h-3.5 text-slate-300" /> <span className="text-slate-800">{detailDoc.name}</span>
+                    {!isArchiveView && (
                     <button 
                       onClick={() => {
                         const favorites = JSON.parse(localStorage.getItem('my_favorites') || '[]');
@@ -1469,13 +1811,15 @@ export function KnowledgeBaseDetail({
                     >
                       <Star className={cn("w-3.5 h-3.5", JSON.parse(localStorage.getItem('my_favorites') || '[]').some((f: any) => f.targetId === (detailDoc ? detailDoc.id : '') && f.type === 'file') && "fill-current")} />
                     </button>
+                    )}
                    {isArchiveView ? (
                      <PublishStatusBadge status="archived" />
                    ) : kbType === 'public' && (
-                     <PublishStatusBadge status={detailDoc.publishStatus || 'published'} />
+                     <PublishStatusBadge status={getPublicListPublishStatus(detailDoc)} />
                    )}
                  </div>
                </div>
+               {!isArchiveView && (
                <div className="flex items-center gap-1 shrink-0">
                  {isEditingDoc ? (
                     <button className="px-3 h-8 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow-sm" onClick={() => {
@@ -1486,7 +1830,7 @@ export function KnowledgeBaseDetail({
                                          <div className="flex items-center gap-1">
                        {detailDoc.type === 'note' && (
                          <button 
-                           className={cn("px-3 h-8 bg-white hover:bg-slate-50 border border-slate-200 text-blue-600 rounded-lg text-sm font-medium shadow-sm flex items-center gap-1", !canWrite && "hidden")} 
+                           className={cn("px-3 h-8 glass-card hover:bg-white/50 text-blue-600 rounded-lg text-sm font-medium flex items-center gap-1", !canWrite && "hidden")} 
                            onClick={() => setIsEditingDoc(true)}
                          >
                            <Edit3 className="w-3 h-3" /> 编辑
@@ -1513,7 +1857,8 @@ export function KnowledgeBaseDetail({
                            "px-2.5 h-8 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors border cursor-pointer",
                            sidePanel === 'comments'
                              ? "bg-blue-50 border-blue-400 text-blue-600 font-medium shadow-sm"
-                             : "bg-white hover:bg-slate-50 border-slate-200 text-slate-600"
+                             : "bg-white hover:bg-slate-50 border-slate-200 text-slate-600",
+                           !sharedCanComment && "hidden"
                          )}
                          title="查看并发表评论信息"
                        >
@@ -1533,70 +1878,74 @@ export function KnowledgeBaseDetail({
                        )}
                      </div>
                  )}
-                  {kbType === 'public' && teamRole === 'admin' && !isEditingDoc && (
-                    <div className="flex items-center gap-1.5 mr-1 border-r border-slate-200 pr-2">
-                      {detailDoc.publishStatus === 'pending_audit' && (
+                  {kbType === 'public' && teamRole === 'admin' && !isEditingDoc && (() => {
+                    const pubStatus = getPublicFilePublishStatus(detailDoc);
+                    if (!pubStatus) return null;
+                    return (
+                    <div className="flex items-center gap-3 mr-1 border-r border-slate-200 pr-2">
+                      {pubStatus === 'pending_audit' && (
                         <button 
+                          type="button"
                           onClick={() => {
                             setNodes(nodes.map(n => n.id === detailDoc.id ? { ...n, publishStatus: 'approved' } : n));
                             showToast('审核通过，文件已进入待发布状态');
                           }}
-                          className="px-3 h-8 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow-sm flex items-center gap-1.5 border-0 transition-transform active:scale-95"
+                          className={PUBLIC_ACTION_LINK_PRIMARY}
                         >
-                          <CheckCircle2 className="w-3.5 h-3.5" /> 审核通过
+                          审核通过
                         </button>
                       )}
-                      {detailDoc.publishStatus === 'approved' && (
-                        <button 
-                          onClick={() => {
-                            setModal({ type: 'publish_confirm', payload: detailDoc });
-                          }}
-                          className="px-3 h-8 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow-sm flex items-center gap-1.5 border-0 transition-transform active:scale-95"
-                        >
-                          <Globe className="w-3.5 h-3.5 text-blue-200" /> 正式发布
-                        </button>
-                      )}
-                      {detailDoc.publishStatus === 'published' && (
-                        <button 
-                          onClick={() => {
-                            setNodes(nodes.map(n => n.id === detailDoc.id ? { ...n, publishStatus: 'offline' } : n));
-                            showToast('该文件已下线，全行人员将无法在公共知识库中检索到此文件');
-                          }}
-                          className="px-3 h-8 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 rounded-lg text-sm font-medium shadow-sm flex items-center gap-1.5 transition-transform active:scale-95"
-                        >
-                          <AlertCircle className="w-3.5 h-3.5" /> 下线文件
-                        </button>
-                      )}
-                      {detailDoc.publishStatus === 'offline' && (
-                        <div className="flex items-center gap-1.5">
+                      {pubStatus === 'approved' && (() => {
+                        const offlinePending = isPublicOfflinePending(detailDoc);
+                        return (
+                        <>
                           <button 
+                            type="button"
                             onClick={() => {
                               setModal({ type: 'publish_confirm', payload: detailDoc });
                             }}
-                            className="px-3 h-8 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow-sm flex items-center gap-1.5 border-0 transition-transform active:scale-95 cursor-pointer"
+                            className={PUBLIC_ACTION_LINK_PRIMARY}
                           >
-                            <RefreshCw className="w-3.5 h-3.5" /> 再次发布
+                            {offlinePending ? '再次发布' : '发布'}
                           </button>
-                          <button 
-                            onClick={() => {
-                              setNodes(nodes.map(n => n.id === detailDoc.id ? { ...n, publishStatus: 'archived' } : n));
-                              showToast('文件已归档');
-                            }}
-                            className="px-3 h-8 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-medium shadow-sm flex items-center gap-1.5 border-0 transition-transform active:scale-95"
-                          >
-                            <FileArchive className="w-3.5 h-3.5" /> 归档
-                          </button>
-                        </div>
+                          {offlinePending && (
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                setNodes(nodes.map(n => n.id === detailDoc.id ? { ...n, publishStatus: 'archived', isOfflineDraft: false } : n));
+                                showToast('文件已归档');
+                              }}
+                              className={PUBLIC_ACTION_LINK_MUTED}
+                            >
+                              归档
+                            </button>
+                          )}
+                        </>
+                        );
+                      })()}
+                      {pubStatus === 'published' && !isPublicOfflinePending(detailDoc) && (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setNodes(nodes.map(n => n.id === detailDoc.id ? { ...n, publishStatus: 'approved', isOfflineDraft: true } : n));
+                            showToast('该文件已下线，已进入待发布状态');
+                          }}
+                          className={PUBLIC_ACTION_LINK_DANGER}
+                        >
+                          下线
+                        </button>
                       )}
                     </div>
-                  )}
+                    );
+                  })()}
                  
+                 {detailCanDownload && (
                  <div className="relative">
                    <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400" onClick={() => setShowDownloadMenu(!showDownloadMenu)}><Download className="w-4.5 h-4.5" /></button>
                    {showDownloadMenu && (
                      <>
                        <div className="fixed inset-0 z-20" onClick={() => setShowDownloadMenu(false)} />
-                       <div className="absolute right-0 top-full mt-1 w-40 bg-white border border-slate-200 rounded-xl shadow-xl z-30 py-1 text-sm font-medium overflow-hidden animate-in fade-in slide-in-from-top-1">
+                       <div className="absolute right-0 top-full mt-1 w-40 glass-panel rounded-xl z-30 py-1 text-sm font-medium overflow-hidden animate-in fade-in slide-in-from-top-1">
                          {detailDoc.type === 'note' ? (
                            <>
                              <button className="w-full px-3 py-2 text-left text-slate-700 hover:bg-slate-50" onClick={() => { setShowDownloadMenu(false); showToast('开始下载 Markdown 格式...'); }}>下载为 Markdown (.md)</button>
@@ -1612,18 +1961,128 @@ export function KnowledgeBaseDetail({
                      </>
                    )}
                  </div>
+                 )}
                </div>
+               )}
              </header>
               <div className="flex-1 overflow-auto relative flex justify-center bg-[#fdfdfd]">
-                {['pdf', 'docx', 'xlsx', 'pptx'].includes(detailDoc.format || '') ? (
-                   <div className="max-w-[780px] w-full min-h-full bg-white border-x border-slate-100 shadow-sm p-12">
+                {detailDoc.type === 'note' ? (
+                   <div className={cn("max-w-[780px] w-full min-h-full p-12 flex flex-col", isEditingDoc ? "bg-blue-50/30 shadow-inner" : "glass-card border-x border-white/50")}>
+                      {isEditingDoc ? (
+                         <textarea
+                           value={editContent}
+                           onChange={e => setEditContent(e.target.value)}
+                           className="flex-1 w-full bg-transparent resize-none outline-none text-sm leading-relaxed text-slate-800 font-medium"
+                           placeholder="开始编写笔记..."
+                         />
+                      ) : (
+                       <div className="prose prose-slate prose-sm max-w-none w-full">
+                         {(detailDoc.governanceStatus === 'running' || detailDoc.governanceStatus === 'failed') && viewingVersionId === null && (
+                           <div className={cn("mb-6 p-3 border rounded-xl flex items-center justify-between font-sans shadow-sm NotProse", detailDoc.governanceStatus === "running" ? "bg-blue-50 border-blue-200" : "bg-rose-50 border-rose-200 text-rose-950")}>
+                             <div className="flex items-center gap-1.5">
+                               {detailDoc.governanceStatus === "running" ? (
+                                 <RefreshCw className="w-4 h-4 text-blue-500 animate-spin shrink-0" />
+                               ) : (
+                                 <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                               )}
+                               <div className="text-left">
+                                 <p className={cn("text-sm font-medium", detailDoc.governanceStatus === "running" ? "text-blue-900" : "text-rose-955")}>{detailDoc.governanceStatus === "running" ? "智能治理全自动预处理中..." : "智能治理流程异常中止"}</p>
+                                 <p className={cn("text-[10.5px] font-medium mt-0.5 font-sans", detailDoc.governanceStatus === "running" ? "text-blue-600" : "text-rose-600")}>{detailDoc.governanceStatus === "running" ? "系统正为您全自动进行首轮 OCR 和语义高精度物理切分（耗时3秒），无需手动触发，请稍候。" : "检测到非法字符集、排版冲突特征，您可执行手动重新发起治理或查看原因。"}</p>
+                               </div>
+                             </div>
+                             <div className="flex items-center gap-1.5 shrink-0">
+                             {!isArchiveView && detailDoc.governanceStatus === 'failed' && canEditGovernanceForFile(detailDoc) && (
+                               <button 
+                                 onClick={() => handleRetryGovernance(detailDoc)}
+                                 className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-medium border-0 cursor-pointer shadow-sm transition font-sans"
+                               >
+                                 重试治理
+                               </button>
+                             )}
+                             {!isArchiveView && canViewGovernanceForFile(detailDoc) && (
+                               <button 
+                                 onClick={() => openGovernanceModal(detailDoc)}
+                                 className={cn(
+                                   "px-3 py-1.5 rounded-lg text-sm font-medium border-0 cursor-pointer shadow-sm transition font-sans flex items-center gap-1 shrink-0",
+                                   detailDoc.governanceStatus === 'failed' && canEditGovernanceForFile(detailDoc)
+                                     ? "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                                     : detailDoc.governanceStatus === 'failed'
+                                       ? "bg-blue-600 hover:bg-blue-700 text-white"
+                                       : "hidden"
+                                 )}
+                               >
+                                 <FileText className="w-3.5 h-3.5" /> 查看治理结果
+                               </button>
+                             )}
+                             </div>
+                           </div>
+                         )}
+                         {viewingVersionId !== null && (
+                            <div className="mb-6 p-4 border rounded-xl flex items-center justify-between font-sans shadow-sm bg-amber-50 border-amber-200 text-amber-900 NotProse">
+                              <div className="flex items-center gap-2">
+                                <History className="w-5 h-5 text-amber-500" />
+                                <div>
+                                  <p className="text-sm font-medium">您正在查看历史版本</p>
+                                  <p className="text-xs text-amber-700/80 mt-0.5">{isArchiveView ? '归档内容仅支持查阅，不可恢复或覆盖当前版本。' : '该版本已归档，如果需要，您可以将其恢复为最新版本。'}</p>
+                                </div>
+                              </div>
+                              {canWrite && (
+                                <button 
+                                  onClick={() => {
+                                    const v = allVersions.find(v => v.id === viewingVersionId);
+                                    if (v && confirm(`确定要恢复到历史版本 ${v.versionName} 吗？`)) {
+                                      setNodes(nodes.map(n => n.id === detailDocId ? { ...n, content: v.content, updatedAt: new Date().toISOString() } : n));
+                                      setEditContent(v.content);
+                                      setViewingVersionId(null);
+                                      showToast('已完成覆盖：恢复至历史版本！');
+                                    }
+                                  }}
+                                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium border-0 cursor-pointer shadow-sm transition"
+                                >
+                                  恢复此版本
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          <h1 className="text-[34px] font-medium text-slate-900 mb-4">{detailDoc.name.replace('.md', '')}</h1>
+                         <div className="flex items-center gap-3 text-sm font-medium text-slate-500 mb-8 border-b border-slate-100 pb-4">
+                           <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm">我</span>
+                           <span>我</span> <span>|</span> <span>{format(new Date(detailDoc.updatedAt), 'MM月dd日 HH:mm')}</span>
+                         </div>
+                         <div className="text-sm leading-loose text-slate-700 whitespace-pre-wrap font-medium">
+                           {viewingVersionId !== null 
+                              ? (allVersions.find(v => v.id === viewingVersionId)?.content || "该历史记录为空白") 
+                              : (detailDoc.content || "空白笔记")}
+                         </div>
+                       </div>
+                    )}
+                  </div>
+               ) : detailDoc.type === 'image' ? (
+                 <div className="w-full min-h-full p-12 flex items-center justify-center bg-slate-800">
+                    <FileImage className="w-32 h-32 text-slate-600" />
+                 </div>
+               ) : isZipOnlyPreviewBlocked(detailDoc) ? (
+                 <div className="w-full min-h-full p-12 flex items-center justify-center">
+                    <div className="text-center bg-slate-50 p-12 rounded-2xl border border-slate-200">
+                       <FileArchive className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                       <h3 className="text-sm font-medium text-slate-700 mb-2">无法预览此文件</h3>
+                       <p className="text-sm text-slate-500">ZIP 压缩包不支持在线预览，请下载后本地查看。</p>
+                       {isArchiveView ? (
+                         <p className="text-sm text-slate-500 mt-3">归档内容仅支持在线查阅，暂不提供下载。</p>
+                       ) : (
+                       <button className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg mt-4 shadow-sm" onClick={() => showToast('已启动源文件下载')}>立刻下载源文件</button>
+                       )}
+                    </div>
+                 </div>
+               ) : (
+                   <div className="max-w-[780px] w-full min-h-full glass-card border-x border-white/50 p-12">
                       {viewingVersionId !== null && (
                          <div className="mb-6 p-4 border rounded-xl flex items-center justify-between font-sans shadow-sm bg-amber-50 border-amber-200 text-amber-900">
                            <div className="flex items-center gap-2">
                              <History className="w-5 h-5 text-amber-500" />
                              <div className="text-left font-sans">
                                <p className="text-sm font-medium">您正在查看历史版本</p>
-                               <p className="text-xs text-amber-700/80 mt-0.5">该版本已归档，如果需要，您可以将其恢复为最新版本。</p>
+                               <p className="text-xs text-amber-700/80 mt-0.5">{isArchiveView ? '归档内容仅支持查阅，不可恢复或覆盖当前版本。' : '该版本已归档，如果需要，您可以将其恢复为最新版本。'}</p>
                              </div>
                            </div>
                            {canWrite && (
@@ -1663,117 +2122,25 @@ export function KnowledgeBaseDetail({
                               <div className="h-4 w-1/2 bg-slate-100 rounded-full" />
                               <div className="mt-8 mb-4 border border-blue-100 bg-blue-50 text-blue-700 p-6 rounded-xl font-medium flex flex-col items-center justify-center gap-3">
                                  <Bot className="w-8 h-8 fill-blue-100" />
-                                 <p>这是一个模拟的 {detailDoc.format?.toUpperCase()} 预览容器</p>
+                                 <p>这是一个模拟的 {getPreviewFormatLabel(detailDoc)} 预览容器</p>
                               </div>
                             </>
                          )}
                       </div>
                    </div>
-                ) : detailDoc.type === 'note' ? (
-                   <div className={cn("max-w-[780px] w-full min-h-full p-12 flex flex-col", isEditingDoc ? "bg-[#f8fbff] shadow-inner" : "bg-white border-x border-slate-100")}>
-                      {isEditingDoc ? (
-                         <textarea
-                           value={editContent}
-                           onChange={e => setEditContent(e.target.value)}
-                           className="flex-1 w-full bg-transparent resize-none outline-none text-sm leading-relaxed text-slate-800 font-medium"
-                           placeholder="开始编写笔记..."
-                         />
-                      ) : (
-                       <div className="prose prose-slate prose-sm max-w-none w-full">
-                         {(detailDoc.governanceStatus === 'running' || detailDoc.governanceStatus === 'failed') && viewingVersionId === null && (
-                           <div className={cn("mb-6 p-3 border rounded-xl flex items-center justify-between font-sans shadow-sm NotProse", detailDoc.governanceStatus === "running" ? "bg-blue-50 border-blue-200" : "bg-rose-50 border-rose-200 text-rose-950")}>
-                             <div className="flex items-center gap-1.5">
-                               {detailDoc.governanceStatus === "running" ? (
-                                 <RefreshCw className="w-4 h-4 text-blue-500 animate-spin shrink-0" />
-                               ) : (
-                                 <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
-                               )}
-                               <div className="text-left">
-                                 <p className={cn("text-sm font-medium", detailDoc.governanceStatus === "running" ? "text-blue-900" : "text-rose-955")}>{detailDoc.governanceStatus === "running" ? "智能治理全自动预处理中..." : "智能治理流程异常中止"}</p>
-                                 <p className={cn("text-[10.5px] font-medium mt-0.5 font-sans", detailDoc.governanceStatus === "running" ? "text-blue-600" : "text-rose-600")}>{detailDoc.governanceStatus === "running" ? "系统正为您全自动进行首轮 OCR 和语义高精度物理切分（耗时3秒），无需手动触发，请稍候。" : "检测到非法字符集、排版冲突特征，您可执行手动重新发起治理或查看原因。"}</p>
-                               </div>
-                             </div>
-                             <button 
-                               onClick={() => setModal({ type: 'preprocess', payload: detailDoc })}
-                               className={cn("px-3 py-1.5 text-white rounded-lg text-sm font-medium border-0 cursor-pointer shadow-sm transition font-sans", detailDoc.governanceStatus === "running" ? "hidden" : "bg-rose-600 hover:bg-rose-700")}
-                             >
-                               {detailDoc.governanceStatus === 'failed' ? "立即重试与查看治理 →" : "立即进入治理 →"}
-                             </button>
-                             {detailDoc.governanceStatus === 'failed' && (
-                               <button 
-                                 onClick={() => setModal({ type: 'preprocess', payload: detailDoc })}
-                                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium border-0 cursor-pointer shadow-sm transition font-sans flex items-center gap-1 shrink-0"
-                               >
-                                 <FileText className="w-3.5 h-3.5" /> 查看文档
-                               </button>
-                             )}
-                           </div>
-                         )}
-                         {viewingVersionId !== null && (
-                            <div className="mb-6 p-4 border rounded-xl flex items-center justify-between font-sans shadow-sm bg-amber-50 border-amber-200 text-amber-900 NotProse">
-                              <div className="flex items-center gap-2">
-                                <History className="w-5 h-5 text-amber-500" />
-                                <div>
-                                  <p className="text-sm font-medium">您正在查看历史版本</p>
-                                  <p className="text-xs text-amber-700/80 mt-0.5">该版本已归档，如果需要，您可以将其恢复为最新版本。</p>
-                                </div>
-                              </div>
-                              {canWrite && (
-                                <button 
-                                  onClick={() => {
-                                    const v = allVersions.find(v => v.id === viewingVersionId);
-                                    if (v && confirm(`确定要恢复到历史版本 ${v.versionName} 吗？`)) {
-                                      setNodes(nodes.map(n => n.id === detailDocId ? { ...n, content: v.content, updatedAt: new Date().toISOString() } : n));
-                                      setEditContent(v.content);
-                                      setViewingVersionId(null);
-                                      showToast('已完成覆盖：恢复至历史版本！');
-                                    }
-                                  }}
-                                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium border-0 cursor-pointer shadow-sm transition"
-                                >
-                                  恢复此版本
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          <h1 className="text-[34px] font-medium text-slate-900 mb-4">{detailDoc.name.replace('.md', '')}</h1>
-                         <div className="flex items-center gap-3 text-sm font-medium text-slate-500 mb-8 border-b border-slate-100 pb-4">
-                           <span className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm">我</span>
-                           <span>我</span> <span>|</span> <span>{format(new Date(detailDoc.updatedAt), 'MM月dd日 HH:mm')}</span>
-                         </div>
-                         <div className="text-sm leading-loose text-slate-700 whitespace-pre-wrap font-medium">
-                           {viewingVersionId !== null 
-                              ? (allVersions.find(v => v.id === viewingVersionId)?.content || "该历史记录为空白") 
-                              : (detailDoc.content || "空白笔记")}
-                         </div>
-                       </div>
-                    )}
-                  </div>
-               ) : detailDoc.type === 'image' ? (
-                 <div className="w-full min-h-full p-12 flex items-center justify-center bg-slate-800">
-                    <FileImage className="w-32 h-32 text-slate-600" />
-                 </div>
-               ) : (
-                 <div className="w-full min-h-full p-12 flex items-center justify-center">
-                    <div className="text-center bg-slate-50 p-12 rounded-2xl border border-slate-200">
-                       <FileArchive className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                       <h3 className="text-sm font-medium text-slate-700 mb-2">无法预览此文件</h3>
-                       <button className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg mt-4 shadow-sm" onClick={() => showToast('已启动源文件下载')}>立刻下载源文件</button>
-                    </div>
-                 </div>
                )}
              </div>
 
              {/* Right Side Panel */}
              </section>
              <AnimatePresence>
-               {sidePanel !== 'none' && (
+               {sidePanel !== 'none' && !isArchiveView && (
                    <motion.aside 
                      initial={{ width: 0, opacity: 0 }} animate={{ width: 360, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                     className="h-full bg-white z-20 flex flex-col shrink-0 overflow-hidden"
+                     className="h-full glass-panel border-l border-white/50 z-20 flex flex-col shrink-0 overflow-hidden"
                    >
                     <div className="w-[360px] flex-1 flex flex-col h-full">
-                     <div className="h-14 px-5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-white">
+                     <div className="h-14 px-5 border-b border-white/40 flex items-center justify-between shrink-0 glass-header">
                        <h3 className="font-medium text-sm text-slate-900">{sidePanel === 'history' ? '历史版本' : '评论'}</h3>
                        <button onClick={() => setSidePanel('none')} className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-200 rounded"><X className="w-4 h-4"/></button>
                      </div>
@@ -1857,6 +2224,7 @@ export function KnowledgeBaseDetail({
                          </div>
                        ) : (
                          <div className="flex flex-col h-full text-left">
+                           {sharedCanComment ? (
                            <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl relative">
                              <textarea 
                                value={newComment} 
@@ -1897,6 +2265,7 @@ export function KnowledgeBaseDetail({
                                <button className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors" onClick={handleAddComment}>发布评论</button>
                              </div>
                            </div>
+                           ) : null}
 
                            <div className="space-y-3 mt-4 flex-1">
                              {allComments.filter(c => c.fileId === detailDocId).map(c => (
@@ -1912,13 +2281,15 @@ export function KnowledgeBaseDetail({
                                      </div>
                                    </div>
                                    <div className="flex gap-1">
-                                     {c.author === '我' ? (
+                                     {c.author === '我' && !isOthersShared ? (
                                        <>
                                          <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.text); }} className="text-sm font-medium text-slate-400 hover:text-blue-600 transition">编辑</button>
                                          <button onClick={() => handleDeleteCommentSubmit(c.id, false)} className="text-sm font-medium text-slate-400 hover:text-rose-600 transition">删除</button>
                                        </>
                                      ) : null}
+                                     {sharedCanComment && (
                                      <button onClick={() => { setReplyingToId(replyingToId === c.id ? null : c.id); setReplyText(''); }} className="text-sm font-medium text-blue-600 hover:text-blue-800 transition">回复</button>
+                                     )}
                                    </div>
                                  </div>
 
@@ -2054,12 +2425,12 @@ export function KnowledgeBaseDetail({
       {/* --- Action Modals --- */}
       <AnimatePresence>
         {['create_folder', 'create_note', 'rename'].includes(modal.type) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center glass-overlay">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
                exit={{ opacity: 0, scale: 0.95 }}
-               className="bg-white rounded-2xl shadow-2xl p-6 w-[400px]"
+               className="glass-modal rounded-2xl p-6 w-[400px]"
              >
                <h3 className="text-[16px] font-medium text-slate-900 mb-4">
                  {modal.type === 'create_folder' ? '新建文件夹' : modal.type === 'create_note' ? '新建 Markdown 笔记' : '重命名'}
@@ -2082,12 +2453,12 @@ export function KnowledgeBaseDetail({
         )}
 
         {modal.type === 'delete' && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center glass-overlay">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
                exit={{ opacity: 0, scale: 0.95 }}
-               className="bg-white rounded-2xl shadow-2xl p-6 w-[400px]"
+               className="glass-modal rounded-2xl p-6 w-[400px]"
              >
                <h3 className="text-[16px] font-medium text-rose-600 flex items-center gap-1 mb-2">
                  <AlertCircle className="w-5 h-5" /> 确认删除
@@ -2105,7 +2476,7 @@ export function KnowledgeBaseDetail({
         )}
         
         {['move', 'copy'].includes(modal.type) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center glass-overlay">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
@@ -2139,7 +2510,7 @@ export function KnowledgeBaseDetail({
       </AnimatePresence>
 
         {modal.type === 'publish_confirm' && modal.payload && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center glass-overlay">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
@@ -2150,11 +2521,11 @@ export function KnowledgeBaseDetail({
                  <Globe className="w-5 h-5 text-blue-600" /> 文档发布确认
                </h3>
                
-               <div className="text-sm font-medium text-slate-500 mb-6 truncate px-7">
+               <div className="text-sm font-medium text-slate-500 mb-5 truncate px-7">
                  即将发布：{modal.payload.name}
                </div>
                
-               <div className="mb-8 px-7">
+               <div className="mb-6 px-7 space-y-3">
                  <label className="flex items-start gap-3 cursor-pointer p-3 bg-slate-50 rounded-xl border border-slate-200">
                    <div className="mt-0.5">
                      <input 
@@ -2171,17 +2542,44 @@ export function KnowledgeBaseDetail({
                      </div>
                    </div>
                  </label>
+
+                 <label className="flex items-start gap-3 cursor-pointer p-3 bg-slate-50 rounded-xl border border-slate-200">
+                   <div className="mt-0.5">
+                     <input 
+                       type="checkbox" 
+                       className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                       checked={publishAllowDownload}
+                       onChange={(e) => setPublishAllowDownload(e.target.checked)}
+                     />
+                   </div>
+                   <div>
+                     <div className="text-sm font-medium text-slate-800">允许成员下载此文件</div>
+                     <div className="text-sm text-slate-500 mt-1 font-semibold leading-relaxed">
+                       勾选后，授权范围内的成员可下载原文件；不勾选则仅支持在线查阅，不开放下载统计。
+                     </div>
+                   </div>
+                 </label>
                </div>
 
                <div className="flex justify-end gap-1 mt-6">
                   <button 
-                    onClick={() => setModal({ type: 'none' })}
+                    onClick={() => {
+                      setModal({ type: 'none' });
+                      setPublishAsRequired(false);
+                      setPublishAllowDownload(true);
+                    }}
                     className="px-4 py-2 bg-slate-50 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
                   >取消</button>
                   <button 
                     onClick={() => {
-                       setNodes(nodes.map(n => n.id === modal.payload.id ? { ...n, publishStatus: 'published', isRequiredRead: publishAsRequired } : n));
-                       showToast('文件已正式发布');
+                       setNodes(nodes.map(n => n.id === modal.payload.id ? {
+                         ...n,
+                         publishStatus: 'published',
+                         isRequiredRead: publishAsRequired,
+                         downloadable: publishAllowDownload,
+                         isOfflineDraft: false,
+                       } : n));
+                       showToast('文件已发布');
                        
                        if (publishAsRequired) {
                          const notifications = JSON.parse(localStorage.getItem('local_notifications') || '[]');
@@ -2206,6 +2604,7 @@ export function KnowledgeBaseDetail({
                        }
                        setModal({ type: 'none' });
                        setPublishAsRequired(false);
+                       setPublishAllowDownload(true);
                     }}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors border-0 cursor-pointer"
                   >确认发布</button>
@@ -2215,7 +2614,7 @@ export function KnowledgeBaseDetail({
         )}
 
         {modal.type === 'escalate_pkb' && modal.payload && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center glass-overlay">
              <motion.div 
                initial={{ opacity: 0, scale: 0.95 }}
                animate={{ opacity: 1, scale: 1 }}
@@ -2487,9 +2886,13 @@ export function KnowledgeBaseDetail({
       {modal.type === 'preprocess' && modal.payload && (
         <FilePreprocessView 
           file={modal.payload as any} 
-          canEdit={kbType === 'team' || kbType === 'personal_own'} 
+          canEdit={canEditGovernanceForFile(modal.payload as FileNode)}
           onBack={closeModal} 
           onCompleteGovernance={(fileId) => {
+            if (!canEditGovernanceForFile(modal.payload as FileNode)) {
+              showToast('当前权限无法处理该文件的治理结果');
+              return;
+            }
             setNodes(prev => prev.map(n => n.id === fileId ? {
               ...n,
               governanceStatus: 'success',

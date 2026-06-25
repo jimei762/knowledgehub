@@ -40,8 +40,8 @@ export function AuditView() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-hidden text-left">
-      <div className="px-8 py-6 border-b border-slate-200 bg-white shrink-0 shadow-sm relative z-10">
+    <div className="flex-1 flex flex-col h-full overflow-hidden text-left">
+      <div className="px-8 py-6 glass-header shrink-0 relative z-10">
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-[22px] font-medium text-slate-900 tracking-normal flex items-center gap-2">
@@ -136,10 +136,10 @@ export function AuditView() {
       </div>
 
       <div className="flex-1 overflow-auto p-8">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="glass-panel rounded-2xl overflow-hidden">
           <table className="w-full text-left border-collapse min-w-[960px]">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/50">
+              <tr className="border-b border-white/40 bg-white/30">
                 <th className="px-5 py-3 text-sm font-medium text-slate-500 whitespace-nowrap">时间</th>
                 <th className="px-5 py-3 text-sm font-medium text-slate-500 whitespace-nowrap">操作人</th>
                 <th className="px-5 py-3 text-sm font-medium text-slate-500 whitespace-nowrap">动作</th>
@@ -149,7 +149,7 @@ export function AuditView() {
             </thead>
             <tbody>
               {filteredAudits.map((log) => (
-                <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors group">
+                <tr key={log.id} className="border-b border-white/30 hover:bg-white/25 transition-colors group">
                   <td className="px-5 py-3 text-sm font-medium text-slate-500 font-mono whitespace-nowrap">{log.time}</td>
                   <td className="px-5 py-3 text-sm font-medium text-slate-700">{log.user}</td>
                   <td className="px-5 py-3">

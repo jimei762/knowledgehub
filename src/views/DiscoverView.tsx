@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Search, Check, Sparkles, Newspaper, Bookmark, Share2, Eye, User, Calendar, ChevronRight, Compass, ArrowRight, Grid3X3, List, BookOpen, Heart, Download, Plus } from "lucide-react";
+import { Search, Check, Sparkles, Newspaper, Bookmark, Share2, Eye, User, Calendar, ChevronRight, Compass, ArrowRight, Grid3X3, List, BookOpen, Heart, Download, Plus, RefreshCw } from "lucide-react";
 import { cn } from "../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -92,12 +92,130 @@ const INITIAL_PERSONAL_SHARES = [
   }
 ];
 
+const OFFICIAL_PUBLISH_POOL = [
+  ...INITIAL_OFFICIAL_PUBLISHES,
+  {
+    id: "op5",
+    title: "2026年开门红活动总体方案.pdf",
+    desc: "全行开门红活动组织推进方案，覆盖客户分层、触达节奏、网点物料配置与阶段复盘要求，供各分支行对照执行。",
+    dept: "零售运营部",
+    label: "最新发布",
+    time: "今日 09:12",
+    size: "8.5 MB",
+    type: "pdf",
+    reads: 3280,
+    kbFileId: "file5",
+  },
+  {
+    id: "op6",
+    title: "重要空白凭证保管操作规程.pdf",
+    desc: "重要空白凭证领用、保管、核销、销毁全流程合规要求，适用于网点运营与后督岗位日常查阅。",
+    dept: "运营管理部",
+    label: "必读资料",
+    time: "5天前发布",
+    size: "6.8 MB",
+    type: "pdf",
+    reads: 1890,
+    kbFileId: "file6",
+  },
+  {
+    id: "op7",
+    title: "新入司柜员岗位学习全景路径图.pdf",
+    desc: "新员工入职必修路径，串联基础业务、系统操作、风险提示与通关考核节点，适合导师带教使用。",
+    dept: "培训学院",
+    label: "推荐参考",
+    time: "1周前发布",
+    size: "3.7 MB",
+    type: "pdf",
+    reads: 960,
+    kbFileId: "file7",
+  },
+  {
+    id: "op8",
+    title: "某新能源头部企业50亿银团贷款复盘报告.pdf",
+    desc: "重大项目审批逻辑、风控排查要点及投后风险预警复盘，供中高级客户经理研习参考。",
+    dept: "授信审批部",
+    label: "推荐参考",
+    time: "1周前发布",
+    size: "22.5 MB",
+    type: "pdf",
+    reads: 540,
+    kbFileId: "file8",
+  },
+];
+
+const PERSONAL_SHARE_POOL = [
+  ...INITIAL_PERSONAL_SHARES,
+  {
+    id: "ps4",
+    title: "陈波的对公授信现场尽调影像资料清单模板",
+    desc: "整理三年现场尽调经验，覆盖影像补录、访谈纪要、财务核验三类高频遗漏项，可直接复用到项目推进中。",
+    author: "陈波",
+    dept: "授信审批部",
+    views: 188,
+    followers: 41,
+    isFollowed: false,
+    tags: ["授信尽调", "模板", "对公业务"],
+  },
+  {
+    id: "ps5",
+    title: "张敏的网点客诉升级处置案例集",
+    desc: "汇总 12 起典型客诉升级案例及处置复盘，包含话术、流程节点和后续跟进动作，适合一线网点共享。",
+    author: "张敏",
+    dept: "客户服务部",
+    views: 362,
+    followers: 58,
+    isFollowed: false,
+    tags: ["客诉处置", "案例集", "网点运营"],
+  },
+  {
+    id: "ps6",
+    title: "周维的制度修订协同会议纪要模板库",
+    desc: "制度修订小组内部使用的会议纪要、意见征集、版本对照三类模板，帮助缩短跨部门协同周期。",
+    author: "周维",
+    dept: "运营管理部",
+    views: 276,
+    followers: 37,
+    isFollowed: false,
+    tags: ["制度修订", "协同模板", "会议纪要"],
+  },
+];
+
+const OFFICIAL_DISPLAY_COUNT = 4;
+const PERSONAL_DISPLAY_COUNT = 3;
+
+function shuffleArray<T>(items: T[]): T[] {
+  const next = [...items];
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [next[i], next[j]] = [next[j], next[i]];
+  }
+  return next;
+}
+
+function pickRandomRecords<T>(pool: T[], count: number): T[] {
+  return shuffleArray(pool).slice(0, Math.min(count, pool.length));
+}
+
+function mergePersonalRecords(customShares: typeof INITIAL_PERSONAL_SHARES, picked: typeof INITIAL_PERSONAL_SHARES) {
+  const customIds = new Set(customShares.map((item) => item.id));
+  const filteredPicked = picked.filter((item) => !customIds.has(item.id));
+  return [...customShares, ...filteredPicked];
+}
+
 export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void }) {
   const [activeTab, setActiveTab] = useState<"official" | "personal">("official");
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [officialRecords, setOfficialRecords] = useState(INITIAL_OFFICIAL_PUBLISHES);
-  const [personalRecords, setPersonalRecords] = useState(INITIAL_PERSONAL_SHARES);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [officialRecords, setOfficialRecords] = useState(() =>
+    pickRandomRecords(OFFICIAL_PUBLISH_POOL, OFFICIAL_DISPLAY_COUNT)
+  );
+  const [personalRecords, setPersonalRecords] = useState(() =>
+    pickRandomRecords(PERSONAL_SHARE_POOL, PERSONAL_DISPLAY_COUNT)
+  );
+  const [customPersonalShares, setCustomPersonalShares] = useState<typeof INITIAL_PERSONAL_SHARES>([]);
   
   const [toast, setToast] = useState<string | null>(null);
 
@@ -125,8 +243,9 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
         
         setPersonalRecords(prev => {
           const initialFiltered = prev.filter(item => !parsed[item.id]);
-          return [...customShares, ...initialFiltered];
+          return mergePersonalRecords(customShares, initialFiltered);
         });
+        setCustomPersonalShares(customShares);
       } catch (e) {
         console.error(e);
       }
@@ -135,6 +254,20 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleRefreshContent = () => {
+    setIsRefreshing(true);
+    setOfficialRecords(pickRandomRecords(OFFICIAL_PUBLISH_POOL, OFFICIAL_DISPLAY_COUNT));
+    setPersonalRecords(
+      mergePersonalRecords(
+        customPersonalShares,
+        pickRandomRecords(PERSONAL_SHARE_POOL, PERSONAL_DISPLAY_COUNT)
+      )
+    );
+    setRefreshKey((prev) => prev + 1);
+    showToast("已为您换一批推荐内容");
+    window.setTimeout(() => setIsRefreshing(false), 500);
   };
 
   // Toggle dynamic follow for personal shares
@@ -171,10 +304,10 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
   }, [personalRecords, searchQuery]);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#f8fafc] overflow-hidden font-sans">
+    <div className="flex-1 flex flex-col h-full overflow-hidden font-sans">
       
       {/* Search and Navigation Bar */}
-      <div className="shrink-0 bg-white border-b border-slate-200 px-8 py-5 relative z-10">
+      <div className="shrink-0 glass-header px-8 py-5 relative z-10">
         <div className="w-full max-w-[1440px] mx-auto flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-1">
             <div className="flex items-center gap-1">
@@ -240,6 +373,16 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
               <span className="text-sm px-1.5 py-0.5 rounded-full bg-blue-200/50 text-blue-700">他人分享/成果</span>
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={handleRefreshContent}
+            disabled={isRefreshing}
+            className="h-10 px-4 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all flex items-center gap-1.5 disabled:opacity-60"
+          >
+            <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
+            换一换
+          </button>
         </div>
       </div>
 
@@ -249,10 +392,16 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
           
           {/* TAB 1: 组织发布内容 */}
           {activeTab === "official" && (
-            <div className="space-y-6">
+            <motion.div
+              key={`official-${refreshKey}`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.22 }}
+              className="space-y-6"
+            >
 
               {filteredOfficial.length === 0 ? (
-                <div className="py-20 text-center text-slate-400 bg-white rounded-2xl border border-slate-200">
+                <div className="py-20 text-center text-slate-400 glass-panel rounded-2xl">
                   <Bookmark className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                   <p className="text-sm font-medium text-slate-500">没有查找到相关的组织发布内容</p>
                 </div>
@@ -262,7 +411,7 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
                     <motion.div 
                       key={item.id}
                       whileHover={{ y: -2 }}
-                      className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                      className="glass-panel rounded-2xl p-5 hover:shadow-md transition-all flex flex-col justify-between"
                     >
                       <div>
                         <div className="flex items-center justify-between mb-3.5">
@@ -306,7 +455,7 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
                   ))}
                 </div>
               ) : (
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+                <div className="glass-panel rounded-2xl overflow-hidden">
                   {filteredOfficial.map((item, idx) => (
                     <div 
                       key={item.id}
@@ -349,15 +498,21 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
                   ))}
                 </div>
               )}
-            </div>
+            </motion.div>
           )}
 
           {/* TAB 2: 个人公开共享内容 */}
           {activeTab === "personal" && (
-            <div className="space-y-6">
+            <motion.div
+              key={`personal-${refreshKey}`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.22 }}
+              className="space-y-6"
+            >
 
               {filteredPersonal.length === 0 ? (
-                <div className="py-20 text-center text-slate-400 bg-white rounded-2xl border border-slate-200">
+                <div className="py-20 text-center text-slate-400 glass-panel rounded-2xl">
                   <User className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                   <p className="text-sm font-medium text-slate-500">没有查找到相关的他人公开共享内容</p>
                 </div>
@@ -367,7 +522,7 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
                     <motion.div 
                       key={item.id}
                       whileHover={{ y: -2 }}
-                      className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                      className="glass-panel rounded-2xl p-5 hover:shadow-md transition-all flex flex-col justify-between"
                     >
                       <div>
                         <div className="flex items-center gap-3 mb-4">
@@ -433,7 +588,7 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
                   ))}
                 </div>
               ) : (
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+                <div className="glass-panel rounded-2xl overflow-hidden">
                   {filteredPersonal.map((item, idx) => (
                     <div 
                       key={item.id}
@@ -488,7 +643,7 @@ export function DiscoverView({ onSubscribe }: { onSubscribe?: (kb: any) => void 
                   ))}
                 </div>
               )}
-            </div>
+            </motion.div>
           )}
 
         </div>

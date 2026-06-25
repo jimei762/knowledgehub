@@ -149,11 +149,11 @@ export const MemberSelectorModal: React.FC<MemberSelectorModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 glass-overlay animate-in fade-in duration-200">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-[800px] h-[600px] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200"
+        className="w-full max-w-[800px] h-[600px] glass-modal rounded-2xl overflow-hidden flex flex-col"
       >
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
